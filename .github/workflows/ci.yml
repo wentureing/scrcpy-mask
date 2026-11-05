@@ -98,10 +98,19 @@ jobs:
       - name: Set up msvc
         uses: ilammy/msvc-dev-cmd@v1
 
+      # 先查缓存：命中就不用装 MSYS2（既省时间，也避免 setup-msys2 下载 504 拖垮整个 job）
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-v0.6
+
       - name: Set up msys
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         uses: msys2/setup-msys2@v2
         with:
-          update: true
+          update: false
           msystem: MINGW64
           cache: true
           install: >-
@@ -111,14 +120,6 @@ jobs:
             yasm
             pkg-config
           path-type: inherit
-
-      # 与 release.yml 共用同一 key，两个 workflow 可互相命中
-      - name: Cache FFmpeg build
-        id: ffmpeg-cache
-        uses: actions/cache@v4
-        with:
-          path: ffmpeg-7.1.2/ffmpeg-windows-x64
-          key: ffmpeg-windows-x64-7.1.2-v0.6
 
       - name: Build FFmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -164,10 +165,19 @@ jobs:
       - name: Set up msvc
         uses: ilammy/msvc-dev-cmd@v1
 
+      # 先查缓存：命中就不用装 MSYS2（避免 setup-msys2 下载 504 拖垮打包）
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-v0.6
+
       - name: Set up msys
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         uses: msys2/setup-msys2@v2
         with:
-          update: true
+          update: false
           msystem: MINGW64
           cache: true
           install: >-
@@ -177,13 +187,6 @@ jobs:
             yasm
             pkg-config
           path-type: inherit
-
-      - name: Cache FFmpeg build
-        id: ffmpeg-cache
-        uses: actions/cache@v4
-        with:
-          path: ffmpeg-7.1.2/ffmpeg-windows-x64
-          key: ffmpeg-windows-x64-7.1.2-v0.6
 
       - name: Build FFmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
