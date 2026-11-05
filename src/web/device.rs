@@ -69,13 +69,61 @@ async fn device_list() -> Result<JsonResponse, WebServerError> {
         .devices()
         .map_err(|e| WebServerError::internal_error(e))?;
 
+    // 合并列表：以 device_id 做外连接，受控项优先。
+    // 旧字段（controlled_devices / adb_devices）保留一个版本，避免前端灰度期崩。
+    let mut devices: Vec<serde_json::Value> = Vec::new();
+    let mut controlled_ids: Vec<String> = Vec::new();
+    for d in &controlled_devices {
+        controlled_ids.push(d.device_id.clone());
+        devices.push(json!({
+            "device_id": d.device_id,
+            "name": d.name,
+            "status": "controlled",
+            "main": d.main,
+            "scid": d.scid,
+            "socket_ids": d.socket_ids,
+            "device_size": [d.device_size.0, d.device_size.1],
+            "transport": if d.device_id.contains(':') { "tcp" } else { "usb" },
+        }));
+    }
+    for d in &all_devices {
+        if controlled_ids.iter().any(|id| id == &d.id) {
+            continue;
+        }
+        devices.push(json!({
+            "device_id": d.id,
+            "name": serde_json::Value::Null,
+            "status": normalize_adb_status(&d.status),
+            "main": false,
+            "scid": serde_json::Value::Null,
+            "socket_ids": [],
+            "device_size": serde_json::Value::Null,
+            "transport": if d.id.contains(':') { "tcp" } else { "usb" },
+        }));
+    }
+
     Ok(JsonResponse::success(
         t!("web.device.deviceListObtained"),
         Some(json!({
+            "devices": devices,
             "controlled_devices": controlled_devices,
             "adb_devices": all_devices,
         })),
     ))
+}
+
+/// 把 `adb_client` 的状态字符串归一化成前端可用的固定枚举，避免前端硬编码猜测。
+fn normalize_adb_status(status: &str) -> &'static str {
+    let s = status.to_ascii_lowercase();
+    if s.contains("unauthorized") {
+        "unauthorized"
+    } else if s.contains("offline") {
+        "offline"
+    } else if s.contains("recovery") {
+        "recovery"
+    } else {
+        "device"
+    }
 }
 
 fn gen_scid() -> String {
