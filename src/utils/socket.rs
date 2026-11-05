@@ -1,4 +1,49 @@
-use std::io;
+use std::{io, net::SocketAddrV4};
+
+use tokio::net::TcpListener;
+
+/// 端口候选数量：起点端口被占用时，依次尝试 +1 … +9。
+pub const PORT_CANDIDATE_COUNT: u16 = 10;
+
+/// 在 `addr.port() .. addr.port()+10` 范围内找一个可用端口。
+///
+/// 成功时回调实际端口（用于更新内存配置），返回监听器与实际地址。
+/// 全部失败才返回错误，错误里带最后一条 bind 失败原因。
+pub async fn bind_with_candidates<F: Fn(u16)>(
+    addr: SocketAddrV4,
+    on_bound: F,
+) -> Result<(TcpListener, SocketAddrV4), String> {
+    let mut last_error = String::new();
+    for offset in 0..PORT_CANDIDATE_COUNT {
+        let port = addr.port().saturating_add(offset);
+        let candidate = SocketAddrV4::new(*addr.ip(), port);
+        match TcpListener::bind(candidate).await {
+            Ok(listener) => {
+                if offset > 0 {
+                    log::warn!(
+                        "[Net] port {} is occupied, using {} (candidate {}/{})",
+                        addr.port(),
+                        port,
+                        offset + 1,
+                        PORT_CANDIDATE_COUNT
+                    );
+                }
+                on_bound(port);
+                return Ok((listener, candidate));
+            }
+            Err(e) => {
+                last_error = format!("{candidate}: {e}");
+                log::warn!("[Net] cannot bind {}: {}", candidate, e);
+            }
+        }
+    }
+    Err(format!(
+        "no free port in {}..={} (last error: {})",
+        addr.port(),
+        addr.port().saturating_add(PORT_CANDIDATE_COUNT - 1),
+        last_error
+    ))
+}
 
 /// Prevent long-lived child processes (notably the ADB server on Windows) from
 /// keeping a server port open after scrcpy-mask exits.

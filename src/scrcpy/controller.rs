@@ -22,7 +22,7 @@ use crate::{
     },
     utils::{
         LatestVideoFrame, mask_win_move_helper, share::ControlledDevice,
-        socket::disable_inheritance,
+        socket::{bind_with_candidates, disable_inheritance},
     },
     web::ws::WebSocketNotification,
 };
@@ -183,7 +183,11 @@ impl Controller {
         ws_tx: broadcast::Sender<WebSocketNotification>,
     ) {
         log::info!("[Controller] {}: {}", t!("scrcpy.startingController"), addr);
-        let listener = match TcpListener::bind(addr).await {
+        let (listener, addr) = match bind_with_candidates(addr, |port| {
+            LocalConfig::set_controller_port_in_memory(port)
+        })
+        .await
+        {
             Ok(listener) => listener,
             Err(e) => {
                 log::error!("[Controller] Failed to bind {}: {}", addr, e);

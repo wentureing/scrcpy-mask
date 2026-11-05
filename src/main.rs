@@ -116,6 +116,50 @@ fn main() {
     }
 
     app.run();
+
+    // 退出清理：删掉本进程建立的 adb reverse 规则（前端不做，后端兜底）。
+    // 注意：任务管理器强杀进程时不会执行到这里，这是已知限制。
+    cleanup_adb_reverse();
+}
+
+/// 遍历当前受控设备，逐条移除 `adb reverse` 规则。
+fn cleanup_adb_reverse() {
+    use scrcpy_mask::utils::share::ControlledDevice;
+
+    let config = LocalConfig::get();
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("[Teardown] cannot build runtime: {e}");
+            return;
+        }
+    };
+
+    let devices = runtime.block_on(ControlledDevice::get_device_list());
+    if devices.is_empty() {
+        return;
+    }
+    log::info!("[Teardown] cleaning {} adb reverse rule(s)", devices.len());
+
+    for device in devices {
+        let remote = format!("localabstract:scrcpy_{}", device.scid);
+        match std::process::Command::new(&config.adb_path)
+            .args(["-s", &device.device_id, "reverse", "--remove", &remote])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                log::info!("[Teardown] removed adb reverse {remote}");
+            }
+            Ok(out) => log::warn!(
+                "[Teardown] failed to remove {remote}: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => log::warn!("[Teardown] cannot run adb ({}): {e}", config.adb_path),
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]

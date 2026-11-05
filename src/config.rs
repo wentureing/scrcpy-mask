@@ -265,6 +265,16 @@ impl LocalConfig {
         CONFIG.read().unwrap().mouse_horizontal_only
     }
 
+    /// 端口被占用后切换到候选端口：只改内存，不写盘。
+    /// 不持久化是有意的——占用往往是临时的，记住新端口会让配置持续漂移。
+    pub fn set_controller_port_in_memory(port: u16) {
+        CONFIG.write().unwrap().controller_port = port;
+    }
+
+    pub fn set_web_port_in_memory(port: u16) {
+        CONFIG.write().unwrap().web_port = port;
+    }
+
     define_setter!(
         (web_port, u16),
         (web_bind_addr, Ipv4Addr),
