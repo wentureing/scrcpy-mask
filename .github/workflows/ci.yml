@@ -27,6 +27,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
+  # sccache 与增量编译不兼容；同时减少 target 体积
+  CARGO_INCREMENTAL: '0'
   ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
 
 jobs:
@@ -128,7 +130,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64
+          key: windows-x64-check
 
       # 只做 cargo check：能覆盖语法/类型/借用错误，不做 codegen 与链接
       - name: Cargo check
@@ -216,7 +218,18 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64
+          key: windows-x64-package
+
+      # sccache：缓存编译单元（对 release + LTO 也有效）。
+      # 第一次仍要全量编译，之后只重编改动过的 crate，通常 5–15 分钟。
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        shell: pwsh
+        run: |
+          "RUSTC_WRAPPER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "SCCACHE_GHA_ENABLED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # 只跑代表性路径：触点路由 / UHID 触控（复用 release 编译产物）
       - name: Cargo build (release, warm up for tests)
@@ -259,3 +272,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+      - name: Show sccache stats
+        if: always()
+        shell: pwsh
+        run: sccache --show-stats
