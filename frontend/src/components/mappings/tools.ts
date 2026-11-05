@@ -75,6 +75,41 @@ const BINDING_I18N_KEYS: Record<string, string> = {
   MouseMoveRight: "bindings.mouseMoveRight",
 };
 
+/** 无 i18n 上下文时的中文兜底（按钮圆圈内、编辑器里直接显示用） */
+const BINDING_ZH_FALLBACK: Record<string, string> = {
+  "M-Left": "鼠标左键",
+  "M-Middle": "鼠标中键",
+  "M-Right": "鼠标右键",
+  "M-Back": "鼠标侧键·后退",
+  "M-Forward": "鼠标侧键·前进",
+  ScrollUp: "滚轮向上",
+  ScrollDown: "滚轮向下",
+  MouseMoveLeft: "鼠标左移",
+  MouseMoveRight: "鼠标右移",
+};
+
+/** 映射类型的中文名（编辑器/按钮上直接显示，避免出现 SingleTap 这类英文） */
+const MAPPING_TYPE_ZH: Record<string, string> = {
+  SingleTap: "单击",
+  RepeatTap: "按住连点",
+  MultipleTap: "多点序列",
+  Swipe: "划动",
+  DirectionPad: "方向轮盘",
+  PadCastSpell: "摇杆施法",
+  MouseCastSpell: "鼠标指向施法",
+  CancelCast: "取消施法",
+  Observation: "自由视角",
+  Fps: "FPS 视角锁定",
+  Fire: "开火",
+  RawInput: "鼠标直控",
+  Script: "脚本",
+};
+
+/** 映射类型 → 中文显示名 */
+export function formatMappingType(type: string): string {
+  return MAPPING_TYPE_ZH[type] ?? type;
+}
+
 /**
  * 把绑定值（如 "M-Left"、"KeyW"）转成当前语言的显示名。
  * - 中文环境显示“鼠标左键 / W 键”等；
@@ -86,10 +121,11 @@ export function formatBindingName(
   t?: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const translate = (key: string, options?: Record<string, unknown>, fallback?: string) => {
-    if (!t) return fallback ?? name;
+    const zhFallback = fallback ?? BINDING_ZH_FALLBACK[name] ?? name;
+    if (!t) return zhFallback;
     const value = t(key, options);
     // i18next 缺键时返回 key 本身
-    return value && value !== key ? value : (fallback ?? name);
+    return value && value !== key ? value : zhFallback;
   };
 
   const fixedKey = BINDING_I18N_KEYS[name];

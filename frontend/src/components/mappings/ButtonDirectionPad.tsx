@@ -19,7 +19,7 @@ import {
   mappingButtonDragFactory,
   mappingButtonPresetStyle,
   mappingButtonTransformStyle,
-} from "./tools";
+  } from "./tools";
 import { useAppSelector } from "../../store/store";
 import { ItemBox, ItemBoxContainer } from "../common/ItemBox";
 import {

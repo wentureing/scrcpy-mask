@@ -7,6 +7,8 @@ import {
   mappingButtonPosition,
   mappingButtonScaledPresetStyle,
   mappingButtonTransformStyle,
+  formatBindingName,
+  formatMappingType,
 } from "./tools";
 import { useAppSelector } from "../../store/store";
 import { ItemBoxContainer, ItemBox } from "../common/ItemBox";
@@ -48,7 +50,7 @@ export default function ButtonSwipe({
   onConfigCopy: () => void;
 }) {
   const id = `mapping-single-tap-${index}`;
-  const bindText = config.bind.length > 0 ? config.bind.join("+") : "???";
+  const bindText = config.bind.length > 0 ? config.bind.map((b) => formatBindingName(b)).join(" + ") : "???";
   const className =
     "rounded-full absolute box-border border-solid border-2 color-text " +
     (config.bind.length > 0
@@ -151,7 +153,7 @@ export default function ButtonSwipe({
         align="center"
         vertical
       >
-        <Tooltip trigger="click" title={`${config.type}: ${bindText}`}>
+        <Tooltip trigger="click" title={`${formatMappingType(config.type)}: ${bindText}`}>
           <Typography.Text ellipsis={true} className="text-2.5 font-bold">
             {bindText}
           </Typography.Text>
