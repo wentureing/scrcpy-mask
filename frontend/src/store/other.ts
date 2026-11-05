@@ -1,5 +1,53 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { AdbDevice, ControlledDevice } from "../utils";
+import type {
+  AdbDevice,
+  ControlledDevice,
+  DeviceStatus,
+  MergedDevice,
+} from "../utils";
+
+/** adb 状态字符串归一化，避免前端猜取值 */
+export function normalizeDeviceStatus(status: string): DeviceStatus {
+  const s = status.toLowerCase();
+  if (s.includes("unauthorized")) return "unauthorized";
+  if (s.includes("offline")) return "offline";
+  if (s.includes("recovery")) return "recovery";
+  return "device";
+}
+
+/** 由"受控列表 + adb 列表"重建单表数据，受控项优先 */
+export function mergeDevices(
+  controlled: ControlledDevice[],
+  adb: AdbDevice[]
+): MergedDevice[] {
+  const controlledIds = new Set(controlled.map((d) => d.device_id));
+  return [
+    ...controlled.map((d) => ({
+      device_id: d.device_id,
+      name: d.name,
+      status: "controlled" as const,
+      main: d.main,
+      scid: d.scid,
+      socket_ids: d.socket_ids,
+      device_size: d.device_size,
+      transport: (d.device_id.includes(":") ? "tcp" : "usb") as
+        | "tcp"
+        | "usb",
+    })),
+    ...adb
+      .filter((d) => !controlledIds.has(d.id))
+      .map((d) => ({
+        device_id: d.id,
+        name: null,
+        status: normalizeDeviceStatus(d.status),
+        main: false,
+        scid: null,
+        socket_ids: [] as string[],
+        device_size: null,
+        transport: (d.id.includes(":") ? "tcp" : "usb") as "tcp" | "usb",
+      })),
+  ];
+}
 
 export interface DeviceRotation {
   rotation: number;
@@ -18,6 +66,8 @@ export interface OtherState {
   backgroundImage: string;
   controlledDevices: ControlledDevice[];
   adbDevices: AdbDevice[];
+  /** 单表数据源：受控 + 未受控合并（由上面两个列表派生，见 mergeDevices） */
+  devices: MergedDevice[];
   deviceRotations: Record<string, DeviceRotation>;
   updateInfo: {
     hasUpdate: boolean;
@@ -41,6 +91,7 @@ const initialState: OtherState = {
   backgroundImage: "",
   controlledDevices: [],
   adbDevices: [],
+  devices: [],
   deviceRotations: {},
   updateInfo: {
     hasUpdate: false,
@@ -77,9 +128,15 @@ const otherSlice = createSlice({
       action: PayloadAction<OtherState["controlledDevices"]>
     ) => {
       state.controlledDevices = action.payload;
+      state.devices = mergeDevices(action.payload, state.adbDevices);
     },
     setAdbDevices: (state, action: PayloadAction<OtherState["adbDevices"]>) => {
       state.adbDevices = action.payload;
+      state.devices = mergeDevices(state.controlledDevices, action.payload);
+    },
+    // 后端 device_list 已返回合并数组时，直接用它（单一真相）
+    setDevices: (state, action: PayloadAction<OtherState["devices"]>) => {
+      state.devices = action.payload;
     },
     setUpdateInfo: (state, action: PayloadAction<OtherState["updateInfo"]>) => {
       state.updateInfo = action.payload;

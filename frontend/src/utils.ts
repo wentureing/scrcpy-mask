@@ -86,6 +86,26 @@ export interface AdbDevice {
   status: string;
 }
 
+/** 归一化后的设备状态（单表用） */
+export type DeviceStatus =
+  | "controlled"
+  | "device"
+  | "unauthorized"
+  | "offline"
+  | "recovery";
+
+/** 合并后的设备（受控 + 未受控），单表渲染用 */
+export interface MergedDevice {
+  device_id: string;
+  name?: string | null;
+  status: DeviceStatus;
+  main: boolean;
+  scid?: string | null;
+  socket_ids?: string[];
+  device_size?: [number, number] | null;
+  transport: "usb" | "tcp";
+}
+
 export interface AndroidApp {
   package_name: string;
   activity_name: string;

@@ -23,6 +23,7 @@ import {
   type AndroidApp,
   type AndroidDisplay,
   type ControlledDevice,
+  type MergedDevice,
 } from "../utils";
 import {
   AimOutlined,
@@ -42,33 +43,54 @@ import {
   UpOutlined,
 } from "@ant-design/icons";
 import IconButton from "./common/IconButton";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ItemBox, ItemBoxContainer } from "./common/ItemBox";
-import { setAdbDevices, setControlledDevices, setIsLoading } from "../store/other";
+import {
+  setAdbDevices,
+  setControlledDevices,
+  setDevices,
+  setIsLoading,
+} from "../store/other";
 import { useMessageContext } from "../hooks";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { useLocation } from "react-router-dom";
 import { setAdbConnectAddress } from "../store/localConfig";
 
+const STATUS_TEXT: Record<string, string> = {
+  controlled: "已控制",
+  device: "可控制",
+  unauthorized: "未授权",
+  offline: "离线",
+  recovery: "恢复模式",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  controlled: "green",
+  device: "default",
+  unauthorized: "orange",
+  offline: "red",
+  recovery: "blue",
+};
+
 function ControlledDevices({
+  devices,
   isVideo,
   isAudio,
 }: {
+  devices: MergedDevice[];
   isVideo: boolean;
   isAudio: boolean;
 }) {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const messageApi = useMessageContext();
-  const controlledDevices = useAppSelector(
-    (state) => state.other.controlledDevices,
-  );
+  const controlledDevices = devices;
   const deviceRotations = useAppSelector(
     (state) => state.other.deviceRotations,
   );
   const displayId = useAppSelector((state) => state.localConfig.displayId);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [startAppDevice, setStartAppDevice] = useState<ControlledDevice | null>(
+  const [startAppDevice, setStartAppDevice] = useState<MergedDevice | null>(
     null,
   );
   const [startAppLoading, setStartAppLoading] = useState(false);
@@ -143,7 +165,7 @@ function ControlledDevices({
     return `${display.display_id}${name} - ${size} / ${density} / ${rotation}`;
   }
 
-  async function openStartAppModal(device: ControlledDevice) {
+  async function openStartAppModal(device: MergedDevice) {
     setStartAppDevice(device);
     setStartAppLoading(true);
     setStartAppForceStop(false);
@@ -286,6 +308,21 @@ function ControlledDevices({
     },
   ];
 
+  async function controlDevice(device_id: string) {
+    dispatch(setIsLoading(true));
+    try {
+      const res = await requestPost("/api/device/control_device", {
+        device_id,
+        video: isVideo,
+        audio: isAudio,
+      });
+      messageApi?.success(res.message);
+    } catch (error) {
+      messageApi?.error(error as string);
+    }
+    dispatch(setIsLoading(false));
+  }
+
   async function decontrolDevice(device_id: string) {
     dispatch(setIsLoading(true));
     try {
@@ -314,7 +351,17 @@ function ControlledDevices({
     dispatch(setIsLoading(false));
   }
 
-  const columns: TableProps<ControlledDevice>["columns"] = [
+  const columns: TableProps<MergedDevice>["columns"] = [
+    {
+      title: "状态",
+      key: "status",
+      width: "9%",
+      render: (_, record) => (
+        <Tag color={STATUS_COLOR[record.status] ?? "default"}>
+          {STATUS_TEXT[record.status] ?? record.status}
+        </Tag>
+      ),
+    },
     {
       title: "ID",
       dataIndex: "device_id",
@@ -335,13 +382,16 @@ function ControlledDevices({
       title: t("devices.controlledDevices.name"),
       dataIndex: "name",
       key: "name",
+      render: (name) => name ?? "-",
     },
     {
       title: t("devices.controlledDevices.size"),
       dataIndex: "device_size",
       key: "device_size",
       render: (device_size) => {
-        return `${device_size[0]}x${device_size[1]}`;
+        return device_size
+          ? `${device_size[0]}x${device_size[1]}`
+          : "-";
       },
     },
     {
@@ -349,7 +399,7 @@ function ControlledDevices({
       key: "rotation",
       align: "center",
       render: (_, record) => {
-        const rot = deviceRotations[record.scid];
+        const rot = record.scid ? deviceRotations[record.scid] : undefined;
         if (!rot) return null;
         const isLandscape = rot.width >= rot.height;
         return (
@@ -400,7 +450,25 @@ function ControlledDevices({
       ),
       key: "action",
       align: "center",
-      render: (_, record) => (
+      render: (_, record) => {
+        if (record.status !== "controlled") {
+          return record.status === "device" ? (
+            <Space size="middle" className="text-4">
+              <IconButton
+                color="primary"
+                tooltip={t("devices.otherDevices.actionControl")}
+                size={18}
+                icon={<LinkOutlined />}
+                onClick={() => controlDevice(record.device_id)}
+              />
+            </Space>
+          ) : (
+            <span className="color-text-secondary">
+              {STATUS_TEXT[record.status] ?? record.status}
+            </span>
+          );
+        }
+        return (
         <Space size="middle" className="text-4">
           <Popover
             trigger="click"
@@ -412,14 +480,14 @@ function ControlledDevices({
                   {
                     key: "scid",
                     label: "SCID",
-                    children: record.scid,
+                    children: record.scid ?? "-",
                   },
                   {
                     key: "sockets",
                     label: "Sockets",
                     children: (
                       <Space direction="vertical" size={2}>
-                        {record.socket_ids.map((socket_id) => (
+                        {(record.socket_ids ?? []).map((socket_id) => (
                           <span key={socket_id}>{socket_id}</span>
                         ))}
                       </Space>
@@ -458,17 +526,18 @@ function ControlledDevices({
             onClick={() => decontrolDevice(record.device_id)}
           />
         </Space>
-      ),
+        );
+      },
     },
   ];
 
   return (
     <>
-      <Table<ControlledDevice>
+      <Table<MergedDevice>
         rowKey={(record) => record.device_id}
         pagination={{ pageSize: 5 }}
         columns={columns}
-        dataSource={controlledDevices}
+        dataSource={devices}
       />
       <Modal
         title={t("devices.startApp.title")}
@@ -528,93 +597,6 @@ function ControlledDevices({
   );
 }
 
-function OtherDevices({
-  otherDevices,
-  videoState,
-  audioState,
-}: {
-  otherDevices: AdbDevice[];
-  videoState: [boolean, React.Dispatch<React.SetStateAction<boolean>>];
-  audioState: [boolean, React.Dispatch<React.SetStateAction<boolean>>];
-}) {
-  const { t } = useTranslation();
-  const dispatch = useAppDispatch();
-  const messageApi = useMessageContext();
-
-  const [isVideo, setIsVideo] = videoState;
-  const [isAudio, setIsAudio] = audioState;
-
-  async function controlDevice(device: AdbDevice) {
-    dispatch(setIsLoading(true));
-    try {
-      const res = await requestPost("/api/device/control_device", {
-        device_id: device.id,
-        video: isVideo,
-        audio: isAudio,
-      });
-      messageApi?.success(res.message);
-    } catch (error) {
-      messageApi?.error(error as string);
-    }
-    dispatch(setIsLoading(false));
-  }
-
-  const columns: TableProps<AdbDevice>["columns"] = [
-    {
-      title: "ID",
-      dataIndex: "id",
-      key: "id",
-    },
-    {
-      title: t("devices.otherDevices.status"),
-      dataIndex: "status",
-      key: "status",
-    },
-    {
-      title: (
-        <Flex vertical align="center" gap={4}>
-          <Space size="small">
-            <Checkbox
-              checked={isVideo}
-              onChange={(e) => setIsVideo(e.target.checked)}
-            >
-              {t("devices.otherDevices.video")}
-            </Checkbox>
-            <Checkbox
-              checked={isAudio}
-              onChange={(e) => setIsAudio(e.target.checked)}
-            >
-              {t("devices.otherDevices.audio")}
-            </Checkbox>
-          </Space>
-        </Flex>
-      ),
-      key: "action",
-      align: "center",
-      width: "18.5%",
-      render: (_, record) => (
-        <Space size="middle" className="text-4">
-          <IconButton
-            color="primary"
-            tooltip={t("devices.otherDevices.actionControl")}
-            size={18}
-            icon={<LinkOutlined />}
-            onClick={() => controlDevice(record)}
-          />
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <Table<AdbDevice>
-      rowKey={(record) => record.id}
-      pagination={{ pageSize: 5 }}
-      columns={columns}
-      dataSource={otherDevices}
-    />
-  );
-}
 
 export default function Devices() {
   const { t } = useTranslation();
@@ -630,14 +612,8 @@ export default function Devices() {
   const [pairCode, setPairCode] = useState("");
   const connectAddrEditedRef = useRef(false);
 
-  const controlledDevices = useAppSelector(
-    (state) => state.other.controlledDevices,
-  );
-  const adbDevices = useAppSelector((state) => state.other.adbDevices);
-  const otherDevices = useMemo(() => {
-    const controlledIdSet = new Set(controlledDevices.map((d) => d.device_id));
-    return adbDevices.filter((d) => !controlledIdSet.has(d.id));
-  }, [controlledDevices, adbDevices]);
+  // 单一数据源：受控 + 未受控已由 store 合并
+  const devices = useAppSelector((state) => state.other.devices);
 
   const videoState = useState(false);
   const audioState = useState(false);
@@ -661,11 +637,16 @@ export default function Devices() {
     dispatch(setIsLoading(true));
     try {
       const res = await requestGet<{
+        devices?: MergedDevice[];
         controlled_devices: ControlledDevice[];
         adb_devices: AdbDevice[];
       }>("/api/device/device_list");
-      dispatch(setControlledDevices(res.data.controlled_devices));
-      dispatch(setAdbDevices(res.data.adb_devices));
+      if (res.data.devices) {
+        dispatch(setDevices(res.data.devices));
+      } else {
+        dispatch(setControlledDevices(res.data.controlled_devices));
+        dispatch(setAdbDevices(res.data.adb_devices));
+      }
       messageApi?.success(res.message);
     } catch (error) {
       messageApi?.error(error as string);
@@ -710,11 +691,16 @@ export default function Devices() {
     dispatch(setIsLoading(true));
     try {
       const res = await requestPost<{
+        devices?: MergedDevice[];
         controlled_devices: ControlledDevice[];
         adb_devices: AdbDevice[];
       }>("/api/device/adb_restart");
-      dispatch(setControlledDevices(res.data.controlled_devices));
-      dispatch(setAdbDevices(res.data.adb_devices));
+      if (res.data.devices) {
+        dispatch(setDevices(res.data.devices));
+      } else {
+        dispatch(setControlledDevices(res.data.controlled_devices));
+        dispatch(setAdbDevices(res.data.adb_devices));
+      }
       messageApi?.success(res.message);
     } catch (error) {
       messageApi?.error(error as string);
@@ -769,28 +755,33 @@ export default function Devices() {
       </section>
       <section>
         <Flex justify="space-between" align="start">
-          <h2 className="title-with-line">
-            {t("devices.controlledDevices.title")}
-          </h2>
-          <Button
-            type="primary"
-            icon={<SyncOutlined />}
-            onClick={() => refreshDevices()}
-          >
-            {t("devices.common.refresh")}
-          </Button>
+          <h2 className="title-with-line">{t("devices.title", { defaultValue: "设备" })}</h2>
+          <Space size="middle">
+            <Checkbox
+              checked={videoState[0]}
+              onChange={(e) => videoState[1](e.target.checked)}
+            >
+              {t("devices.otherDevices.video")}
+            </Checkbox>
+            <Checkbox
+              checked={audioState[0]}
+              onChange={(e) => audioState[1](e.target.checked)}
+            >
+              {t("devices.otherDevices.audio")}
+            </Checkbox>
+            <Button
+              type="primary"
+              icon={<SyncOutlined />}
+              onClick={() => refreshDevices()}
+            >
+              {t("devices.common.refresh")}
+            </Button>
+          </Space>
         </Flex>
         <ControlledDevices
+          devices={devices}
           isVideo={videoState[0]}
           isAudio={audioState[0]}
-        />
-      </section>
-      <section className="mt-4">
-        <h2 className="title-with-line">{t("devices.otherDevices.title")}</h2>
-        <OtherDevices
-          otherDevices={otherDevices}
-          videoState={videoState}
-          audioState={audioState}
         />
       </section>
     </div>
