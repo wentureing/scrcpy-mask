@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ffmpeg-7.1.2/ffmpeg-windows-x64
-          key: ffmpeg-windows-x64-7.1.2-v0.6
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
 
       - name: Build FFmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -106,7 +106,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64
+          # 与 ci.yml 的 package job 共用同一份 release 缓存。
+          # 注意：tag 触发的 run 只能恢复"当前 tag + 默认分支"的缓存，
+          # 所以只有 master 上写过这份缓存（cache-warm.yml 的 release 预热）时才命中。
+          shared-key: windows-x64-package
+          env-vars: ""
+          cache-on-failure: true
 
       - name: Build package
         shell: pwsh

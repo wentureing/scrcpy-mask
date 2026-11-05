@@ -19,7 +19,8 @@ if ($LASTEXITCODE -ne 0) {
 Pop-Location
 
 Push-Location $ProjectDir
-cargo build --release
+# --locked：与 check 一致，禁止 CI 上重新解析依赖（Cargo.lock 已提交，git 依赖 rev 由它固定）。
+cargo build --release --locked
 if ($LASTEXITCODE -ne 0) {
     Pop-Location
     exit $LASTEXITCODE

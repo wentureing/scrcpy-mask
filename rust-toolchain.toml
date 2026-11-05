@@ -1,0 +1,12 @@
+# 固定 Rust 工具链版本。
+#
+# 为什么：Swatinem/rust-cache 的 cache key 含 rustc release/host/hash。
+# 不固定时，windows-latest 镜像每次更新 Rust 都会让整份 target 缓存失效（一次约 10–16 分钟）。
+# 固定后 key 稳定，代价是需手动升级（升级后首次构建会全量，属正常）。
+#
+# 升级流程：改 channel → 本地 `rustup update` 验证编译 → 提交。
+# 建议每 1–2 个 minor 版本升级一次，或遇到安全公告时升级。
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

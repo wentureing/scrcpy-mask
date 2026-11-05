@@ -3,67 +3,80 @@ name = "scrcpy-mask"
 version = "0.9.0"
 edition = "2024"
 
+# ── 依赖固定策略（2026-11 起）──────────────────────────────────────────────
+# 所有直接依赖写死为 `=x.y.z`，取值与 Cargo.lock 中的实际版本一致。
+# 目的：
+#   1) Swatinem/rust-cache 的 key 含全部 Cargo.toml/Cargo.lock 的 hash，
+#      固定后 key 只在"主动改依赖"时变化，不会因 cargo update 的 patch 漂移而整份失效；
+#   2) 配合 `--locked`，CI 与本地编译的依赖集合完全一致。
+# 升级方式：改这里的版本号 → `cargo update -p <crate> --precise <ver>` → 提交 Cargo.lock。
+# 注意：`=x.y.z` 会阻止自动接收 patch 修复（含安全修复），需按需手动升级。
+# ──────────────────────────────────────────────────────────────────────────
+
 [dependencies]
-bevy = "0.19.0-rc.2"
-bevy_ui_render = "0.19.0-rc.2"
-log = { version = "*", features = [
+bevy = "=0.19.0-rc.2"
+bevy_ui_render = "=0.19.0-rc.2"
+log = { version = "=0.4.32", features = [
     "max_level_debug",
     "release_max_level_info",
 ] }
+# git 依赖：rev 已由 Cargo.lock 固定为 3436d53829a445750c9116c8473829fb26df9a37。
+# 保留 branch 写法是为了不改动 Cargo.lock 的 source 行；`--locked` 保证不会解析到新 rev。
+# 若要彻底摆脱 branch 语义：改成 rev = "3436d538..." 并重新生成 Cargo.lock。
 bevy_ineffable = { git = "https://github.com/AkiChase/bevy_ineffable", branch = "main", version = "0.9.0-bevy0.19.rc2" }
-seq-macro = "0.3"
-paste = "1.0"
-strum = "0.27"
-strum_macros = "0.27"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
-tokio = { version = "1", features = [
+seq-macro = "=0.3.6"
+paste = "=1.0.15"
+strum = "=0.27.1"
+strum_macros = "=0.27.1"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.140"
+tokio = { version = "=1.45.1", features = [
     "rt-multi-thread",
     "net",
     "macros",
     "sync",
     "time",
 ] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "http2", "charset"] }
-semver = "*"
-which = "7"
-adb_client = { version = "3.2.2", default-features = false }
-rand = "0.9"
-dirs = "6.0.0"
-tracing-appender = "0.2"
-axum = { version = "0.8.4", features = ["macros", "ws"] }
-opener = "0.8.2"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "cors", "set-header"] }
-futures-util = { version = "0.3", default-features = false, features = [
+reqwest = { version = "=0.12.23", default-features = false, features = ["rustls-tls", "json", "http2", "charset"] }
+semver = "=1.0.27"
+which = "=7.0.3"
+adb_client = { version = "=3.2.2", default-features = false }
+rand = "=0.9.1"
+dirs = "=6.0.0"
+tracing-appender = "=0.2.3"
+axum = { version = "=0.8.4", features = ["macros", "ws"] }
+opener = "=0.8.2"
+tower = "=0.5.2"
+tower-http = { version = "=0.6.6", features = ["fs", "cors", "set-header"] }
+futures-util = { version = "=0.3.31", default-features = false, features = [
     "sink",
     "std",
 ] }
-crossbeam-channel = "0.5"
-wgpu = "29.0.3"
-pollster = "0.4"
-bitflags = "2.9.1"
-half = "2.6.0"
-tokio-util = "0.7.15"
-once_cell = "1.21.3"
-copypasta = "0.10.2"
-rust-i18n = "3"
-ffmpeg-next = { version = "7.1.0", default-features = false, features = [
+crossbeam-channel = "=0.5.15"
+wgpu = "=29.0.3"
+pollster = "=0.4.0"
+bitflags = "=2.12.1"
+half = "=2.7.1"
+tokio-util = "=0.7.15"
+once_cell = "=1.21.3"
+copypasta = "=0.10.2"
+rust-i18n = "=3.1.5"
+ffmpeg-next = { version = "=7.1.0", default-features = false, features = [
     "codec",
     "format",
     "software-resampling",
     "static",
 ] }
-rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+rodio = { version = "=0.22.2", default-features = false, features = ["playback"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-muda = "0.17"
+muda = "=0.17.1"
 
 [profile.dev.package.objc2]
 debug-assertions = false
 
 [build-dependencies]
-pkg-config = "0.3"
+pkg-config = "=0.3.32"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

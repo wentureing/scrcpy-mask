@@ -25,6 +25,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
+  # 这只是缓存"世代标签"，不是真实版本号：下载 URL 用的是 platform-tools-latest。
+  # 含义：缓存命中后就不会再更新 adb，直到手动改这个值。
+  # 建议每季度改一次（如 2026Q1）迫使重新拉取 latest，避免打进过旧的 adb。
+  # 注意：不要写成 platform-tools_r<版本>-windows.zip 的固定 URL——实测 37.0.0 该路径返回 404。
   ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
 
 jobs:
@@ -102,7 +106,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ffmpeg-7.1.2/ffmpeg-windows-x64
-          key: ffmpeg-windows-x64-7.1.2-v0.6
+          # key 跟随构建脚本内容：改了 build-ffmpeg.sh 就自动重建，
+          # 不再依赖手工 bump "v0.x"（漏 bump 会拿到与源码不符的旧静态库）。
+          # 不要加 restore-keys：脚本变了就该重建。
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
 
       - name: Set up msys
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -124,12 +131,23 @@ jobs:
         shell: msys2 {0}
         run: ./scripts/build-ffmpeg.sh
 
+      # 用 shared-key 而非 key：rust-cache 的 key 默认含 job id，
+      # shared-key 可以在 job 名不同的 workflow 之间共用同一份缓存
+      # （cache-warm.yml 跑在默认分支 master，其缓存在 GitHub 规则下对所有分支可见）。
+      # 注意：改这里必须同步改 cache-warm.yml，否则两边 key 不一致，预热白做。
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64-check
+          shared-key: windows-x64-check
           # 不让环境变量参与 cache key，避免改 CI env 就让缓存整体失效
           env-vars: ""
+          # 默认 false：编译失败时也保存已编好的依赖。
+          # check 最常见的失败就是 Rust 编译错误，不设这个每次都要从零重编 500 个 crate。
+          cache-on-failure: true
+          # actions/cache 的同一个 key 不可覆盖，多分支同时"写"没有意义：
+          # 只让开发分支写，其他 custom/* 分支纯读。
+          # 换主力开发分支时记得改这里。
+          save-if: ${{ github.ref == 'refs/heads/custom/improvements' }}
 
       # 只做 cargo check：能覆盖语法/类型/借用错误，不做 codegen 与链接
       - name: Cargo check
@@ -173,7 +191,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ffmpeg-7.1.2/ffmpeg-windows-x64
-          key: ffmpeg-windows-x64-7.1.2-v0.6
+          # key 跟随构建脚本内容：改了 build-ffmpeg.sh 就自动重建，
+          # 不再依赖手工 bump "v0.x"（漏 bump 会拿到与源码不符的旧静态库）。
+          # 不要加 restore-keys：脚本变了就该重建。
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
 
       - name: Set up msys
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -221,7 +242,8 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64-package
+          # 与 check 分开：check 是 dev profile、这里是 release，target 内容不同，不能混用。
+          shared-key: windows-x64-package
           env-vars: ""
           # 即使构建失败也保存已编译的依赖，下次（修好问题后）能省一大半时间
           cache-on-failure: true

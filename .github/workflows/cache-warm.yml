@@ -1,0 +1,147 @@
+name: Cache warm
+
+# 目的：让"默认分支"持有一份新鲜的 Rust 依赖缓存。
+#
+# 背景（GitHub 官方规则）：
+#   - 缓存按分支隔离，但"默认分支（master）创建的缓存对所有分支可见"；
+#   - 7 天未被访问的缓存会被自动删除；
+#   - 仓库缓存总量默认 10 GB，超出按 LRU 淘汰。
+#
+# 所以：本 workflow 在 master 上周期性跑一次 cargo check（本来 custom/** 分支上也要跑），
+# 把依赖编译产物写进 master scope；之后任何一个 custom/* 分支的首次 CI 都能直接恢复。
+#
+# ⚠️ 部署前提：本文件必须存在于默认分支 master 上才会被 schedule / push 触发。
+#    放在其他分支上不会运行（schedule 永远使用默认分支的最新提交里的 workflow 文件）。
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    # 每 3 天一次。必须明显小于 7 天的过期窗口，否则调度稍有延迟就整份缓存过期。
+    - cron: '0 18 */3 * *'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: '同时预热 release target（发版前跑一次，可省 tag 构建 8–15 分钟）'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  # 与 ci.yml 的 check job 使用同一个 shared-key，key 一致才能互相命中。
+  # 改这里必须同步改 ci.yml 与 cache-warm 里的 shared-key。
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout codes
+        uses: actions/checkout@v4
+
+      - name: Set up msvc
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # FFmpeg 静态库必须先就位，否则 ffmpeg-env.ps1 会直接 throw。
+      # key 与 ci.yml 保持一致（hashFiles 跟踪构建脚本内容）。
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Set up msys
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: false
+          msystem: MINGW64
+          cache: true
+          install: >-
+            make
+            diffutils
+            gawk
+            yasm
+            pkg-config
+          path-type: inherit
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: ./scripts/build-ffmpeg.sh
+
+      - name: Cache Rust dependencies (check)
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-check
+          env-vars: ""
+          cache-on-failure: true
+
+      # 不调用 master 上的 check-windows.ps1：那个脚本里没有 --locked，
+      # 这里显式用 --locked，保证与开发分支解析出完全一致的依赖集合。
+      - name: Cargo check (warm dependencies)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo check --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # 按需预热 release target：tag 触发的 release.yml 只能看到默认分支的缓存，
+  # 所以发版前在 master 上跑一次这个 job，能让 tag 构建直接命中。
+  package-warm:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout codes
+        uses: actions/checkout@v4
+
+      - name: Set up msvc
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Set up msys
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: false
+          msystem: MINGW64
+          cache: true
+          install: >-
+            make
+            diffutils
+            gawk
+            yasm
+            pkg-config
+          path-type: inherit
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: ./scripts/build-ffmpeg.sh
+
+      - name: Cache Rust dependencies (release)
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-package
+          env-vars: ""
+          cache-on-failure: true
+
+      - name: Cargo build release (warm target)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo build --release --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
