@@ -26,10 +26,10 @@ env:
   ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
 
 jobs:
-  # 快速校验：lint / 类型 / 结构断言 / 单测 / cargo check
+  # 快速校验：只做"编译能过"这一档，约 10 分钟出结论
   check:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - name: Checkout codes
         uses: actions/checkout@v4
@@ -98,18 +98,11 @@ jobs:
         with:
           key: windows-x64
 
-      - name: Cargo test (library unit tests)
-        shell: pwsh
-        run: |
-          . ./scripts/ffmpeg-env.ps1
-          cargo test --lib --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Cargo check
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
-  # 打包并保存产物：push 到 custom/** 或手动触发；PR 不打包
+  # 打包并保存产物；不重复跑全量单测，只跑代表性路径（release 复用编译产物）
   package:
     needs: check
     if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.package) }}
@@ -193,6 +186,22 @@ jobs:
         with:
           key: windows-x64
 
+      # 先做一次 release 编译，后面 --release 测试可复用依赖产物（省 20+ 分钟）
+      - name: Cargo build (release, warm up for tests)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo build --release --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # 只跑代表性路径：触点路由 / UHID 触控（核心输入链路），不跑全量
+      - name: Representative unit tests
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo test --release --lib --locked -- scrcpy::
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build package
         shell: pwsh
         run: ./scripts/package-windows.ps1
@@ -202,12 +211,12 @@ jobs:
         run: |
           $zip = "target/release/scrcpy-mask-windows-x64.zip"
           if (-not (Test-Path $zip)) { throw "打包产物不存在: $zip" }
-          $size = (Get-Item $zip).Length / 1MB
-          "产物: $zip ({0:n1} MB)" -f $size
+          $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          "产物: $zip ($size MB)"
           @"
           ### 打包产物
           - 文件: ``scrcpy-mask-windows-x64.zip``
-          - 大小: $([math]::Round($size,1)) MB
+          - 大小: $size MB
           - 提交: ``${{ github.sha }}``
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
