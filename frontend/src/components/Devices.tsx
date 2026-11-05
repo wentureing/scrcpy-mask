@@ -84,7 +84,6 @@ function ControlledDevices({
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const messageApi = useMessageContext();
-  const controlledDevices = devices;
   const deviceRotations = useAppSelector(
     (state) => state.other.deviceRotations,
   );

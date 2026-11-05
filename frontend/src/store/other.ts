@@ -167,6 +167,7 @@ export const {
   setBackgroundImage,
   setControlledDevices,
   setAdbDevices,
+  setDevices,
   setDeviceRotation,
   setUpdateInfo,
   setShowUpdateDialog,
