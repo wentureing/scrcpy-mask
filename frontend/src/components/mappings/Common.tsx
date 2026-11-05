@@ -36,7 +36,7 @@ import { useTranslation } from "react-i18next";
 import { ItemBox } from "../common/ItemBox";
 import { useAppSelector } from "../../store/store";
 import { useRefreshBackgroundImage } from "../../hooks";
-import { mappingModalDragFactory } from "./tools";
+import { formatBindingName, mappingModalDragFactory } from "./tools";
 import { ScriptEditor } from "./ScriptEditor";
 
 const MOUSE_BUTTONS = ["M-Left", "M-Middle", "M-Right", "M-Back", "M-Forward"];
@@ -366,7 +366,7 @@ function AutoInputBinding({
   return (
     <Input
       ref={inputRef}
-      value={bind.join("+")}
+      value={bind.map(formatBindingName).join(" + ")}
       placeholder={t("mappings.common.bind.autoInputPlaceholder")}
       readOnly
       onDoubleClick={() => {
@@ -396,7 +396,8 @@ function AutoInputBinding({
 
 const KeyNameOptions: SelectProps["options"] = KEY_NAMES.map((v) => ({
   value: v,
-  label: v,
+  // 展示中文名（如“W 键”“鼠标左键”），存储仍是原始值
+  label: formatBindingName(v),
 }));
 
 function ManualInputBinding({

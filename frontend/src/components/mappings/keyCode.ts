@@ -384,7 +384,16 @@ const KEYBOARD_KEYS = [
   "F34",
   "F35",
 ];
-const MOUSE_KEYS = ["M-Left", "M-Right", "M-Middle", "M-Back", "M-Forward"];
+const MOUSE_KEYS = [
+  "M-Left",
+  "M-Right",
+  "M-Middle",
+  "M-Back",
+  "M-Forward",
+  // 鼠标水平移动（只取 X 分量，纵向位移不会触发）
+  "MouseMoveLeft",
+  "MouseMoveRight",
+];
 const SCROLL_KEYS = ["ScrollDown", "ScrollUp"];
 const GAMEPAD_KEYS = [
   "G-South",

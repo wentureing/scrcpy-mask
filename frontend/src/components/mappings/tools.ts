@@ -63,6 +63,30 @@ export function mappingButtonTransformStyle(
   return `translate(${x}px, ${y}px)`;
 }
 
+/**
+ * 把绑定值（如 "M-Left"、"KeyW"）转成中文显示名。
+ * 存储仍用原始值，只有展示层转中文，避免影响已有的映射配置文件。
+ */
+export function formatBindingName(name: string): string {
+  const fixed: Record<string, string> = {
+    "M-Left": "鼠标左键",
+    "M-Middle": "鼠标中键",
+    "M-Right": "鼠标右键",
+    "M-Back": "鼠标侧键·后退",
+    "M-Forward": "鼠标侧键·前进",
+    ScrollUp: "滚轮向上",
+    ScrollDown: "滚轮向下",
+    MouseMoveLeft: "鼠标左移",
+    MouseMoveRight: "鼠标右移",
+  };
+  if (fixed[name]) return fixed[name];
+  if (name.startsWith("M-Other-")) return `鼠标键 ${name.slice("M-Other-".length)}`;
+  if (name.startsWith("Key")) return `${name.slice(3)} 键`;
+  if (name.startsWith("Digit")) return `${name.slice(5)} 键`;
+  if (name.startsWith("G-")) return `手柄 ${name.slice(2)}`;
+  return name;
+}
+
 export function mappingButtonDragFactory(
   maskArea: { width: number; height: number; left: number; top: number },
   originalSize: { width: number; height: number },

@@ -18,6 +18,9 @@ pub enum MergedButton {
     Mouse(MouseButton),
     ScrollDown,
     ScrollUp,
+    /// 鼠标水平移动（只取 X 分量，纵向位移不触发）
+    MouseMoveLeft,
+    MouseMoveRight,
     Keyboard(KeyCode),
     GamePad(GamepadButton),
 }
@@ -48,6 +51,13 @@ impl From<MergedButton> for BinaryInput {
             }
             MergedButton::ScrollUp => {
                 BinaryInput::Axis(AnalogInput::ScrollWheelY, Threshold::new(0.1))
+            }
+            // 鼠标水平移动：MouseMotionX 本身就是"过滤掉纵向分量"的横向位移
+            MergedButton::MouseMoveLeft => {
+                BinaryInput::Axis(AnalogInput::MouseMotionX, Threshold::new(-0.1))
+            }
+            MergedButton::MouseMoveRight => {
+                BinaryInput::Axis(AnalogInput::MouseMotionX, Threshold::new(0.1))
             }
             MergedButton::Mouse(mouse_button) => BinaryInput::MouseButton(mouse_button),
             MergedButton::Keyboard(key_code) => BinaryInput::Key(key_code),
@@ -93,6 +103,8 @@ impl ToString for MergedButton {
             },
             MergedButton::ScrollDown => "ScrollDown".to_string(),
             MergedButton::ScrollUp => "ScrollUp".to_string(),
+            MergedButton::MouseMoveLeft => "MouseMoveLeft".to_string(),
+            MergedButton::MouseMoveRight => "MouseMoveRight".to_string(),
             MergedButton::GamePad(gamepad_button) => match_gamepad_to_string!(gamepad_button;
                 South, East, North, West, C, Z,
                 LeftTrigger, LeftTrigger2, RightTrigger, RightTrigger2,
@@ -157,6 +169,8 @@ macro_rules! match_keycode_from_str {
             "Unidentified" => Ok(MergedButton::Keyboard(KeyCode::Unidentified(NativeKeyCode::Unidentified))),
             "ScrollDown" => Ok(MergedButton::ScrollDown),
             "ScrollUp" => Ok(MergedButton::ScrollUp),
+            "MouseMoveLeft" => Ok(MergedButton::MouseMoveLeft),
+            "MouseMoveRight" => Ok(MergedButton::MouseMoveRight),
             s if s.starts_with("Android-") => s[8..].parse()
                 .map(|code| MergedButton::Keyboard(KeyCode::Unidentified(NativeKeyCode::Android(code))))
                 .map_err(|e| format!("{}: {}", t!("mask.mapping.invalidCode", name=>"Android"), e)),
