@@ -1,5 +1,7 @@
 name: CI
 
+# 缩减版：日常 push 只做"能否明显发现错误"的校验（断言 / lint / 类型 / cargo check）。
+# 产物构建改为按需（workflow_dispatch 且勾选 package），不再占用每次 push。
 on:
   push:
     branches:
@@ -8,14 +10,16 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: '同时构建并保存 Windows 产物（zip）'
+        description: '构建并保存 Windows 产物（zip, artifact 14 天）'
         required: false
-        default: true
+        default: false
         type: boolean
 
+# 关键：不打断正在跑的 CI（cancel-in-progress: false）。
+# 同一分支同时最多 1 个运行 + 1 个排队；更早的排队项由 GitHub 自动丢弃。
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -26,15 +30,42 @@ env:
   ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
 
 jobs:
-  # 快速校验：只做"编译能过"这一档，约 10 分钟出结论
+  # 节流闸门：当前 run（含自己）已超过 3 个在跑/排队时，本次直接跳过，避免堆积。
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Check concurrent CI runs (max 3)
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          count=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?per_page=30" \
+            --jq '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued")] | length')
+          echo "当前进行中/排队 CI 数量（含本次）: $count"
+          if [ "$count" -gt 3 ]; then
+            echo "超过 3 个，本次跳过"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
       - name: Checkout codes
         uses: actions/checkout@v4
 
-      # 纯文本断言，秒级，放最前以便快速失败（不必等 FFmpeg 构建）
+      # 纯文本断言，秒级，放最前以便快速失败
       - name: Structural assertions (i18n / ratchet)
         shell: pwsh
         run: ./tools/assertions.ps1
@@ -59,7 +90,8 @@ jobs:
         shell: pwsh
         run: pnpm --dir frontend lint
 
-      - name: Build frontend
+      # tsc -b 覆盖类型错误；vite build 顺带产出 assets/web（11 秒，保留）
+      - name: Typecheck + build frontend
         shell: pwsh
         run: pnpm --dir frontend build
 
@@ -98,14 +130,15 @@ jobs:
         with:
           key: windows-x64
 
+      # 只做 cargo check：能覆盖语法/类型/借用错误，不做 codegen 与链接
       - name: Cargo check
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
-  # 打包并保存产物；不重复跑全量单测，只跑代表性路径（release 复用编译产物）
+  # 按需出包：仅手动触发且勾选 package 时运行
   package:
-    needs: check
-    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.package) }}
+    needs: [gate, check]
+    if: ${{ needs.gate.outputs.proceed == 'true' && github.event_name == 'workflow_dispatch' && inputs.package }}
     runs-on: windows-latest
     timeout-minutes: 240
     steps:
@@ -157,7 +190,6 @@ jobs:
         shell: msys2 {0}
         run: ./scripts/build-ffmpeg.sh
 
-      # 内置 adb 来源；下载一次后缓存，避免每次重复拉 10+MB
       - name: Cache Android platform tools
         id: android-platform-tools-cache
         uses: actions/cache@v4
@@ -186,7 +218,7 @@ jobs:
         with:
           key: windows-x64
 
-      # 先做一次 release 编译，后面 --release 测试可复用依赖产物（省 20+ 分钟）
+      # 只跑代表性路径：触点路由 / UHID 触控（复用 release 编译产物）
       - name: Cargo build (release, warm up for tests)
         shell: pwsh
         run: |
@@ -194,7 +226,6 @@ jobs:
           cargo build --release --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # 只跑代表性路径：触点路由 / UHID 触控（核心输入链路），不跑全量
       - name: Representative unit tests
         shell: pwsh
         run: |
