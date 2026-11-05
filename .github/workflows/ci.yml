@@ -1,9 +1,10 @@
 name: CI
 
-# 手动触发版：默认只做"能否明显发现错误"的校验（断言 / lint / 类型 / cargo check）。
-# 产物构建为可选项（勾选 package），不占用默认流程。
-# 不随 push / PR 自动触发，需在 Actions 页面点 Run workflow。
+# 推送到分支即触发（远程提交就执行 CI）；也可在 Actions 页面手动 Run。
 on:
+  push:
+    branches:
+      - 'custom/**'
   workflow_dispatch:
     inputs:
       package:

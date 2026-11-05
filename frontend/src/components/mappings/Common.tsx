@@ -23,6 +23,7 @@ import {
   useState,
   useRef,
   useEffect,
+  useMemo,
   type PropsWithChildren,
   forwardRef,
   type ComponentPropsWithoutRef,
@@ -366,7 +367,7 @@ function AutoInputBinding({
   return (
     <Input
       ref={inputRef}
-      value={bind.map(formatBindingName).join(" + ")}
+      value={bind.map((name) => formatBindingName(name, t)).join(" + ")}
       placeholder={t("mappings.common.bind.autoInputPlaceholder")}
       readOnly
       onDoubleClick={() => {
@@ -394,12 +395,6 @@ function AutoInputBinding({
   );
 }
 
-const KeyNameOptions: SelectProps["options"] = KEY_NAMES.map((v) => ({
-  value: v,
-  // 展示中文名（如“W 键”“鼠标左键”），存储仍是原始值
-  label: formatBindingName(v),
-}));
-
 function ManualInputBinding({
   bind,
   onBindChange,
@@ -408,6 +403,15 @@ function ManualInputBinding({
   onBindChange: (bind: ButtonBinding) => void;
 }) {
   const { t } = useTranslation();
+  // 列表标签随语言切换：中文环境显示“鼠标左键 / W 键”等
+  const options = useMemo<SelectProps["options"]>(
+    () =>
+      KEY_NAMES.map((v) => ({
+        value: v,
+        label: formatBindingName(v, t),
+      })),
+    [t],
+  );
   return (
     <Select
       mode="multiple"
@@ -416,7 +420,7 @@ function ManualInputBinding({
       placeholder={t("mappings.common.bind.manualSelectPlaceholder")}
       value={bind}
       onChange={(v) => onBindChange(v)}
-      options={KeyNameOptions}
+      options={options}
     />
   );
 }

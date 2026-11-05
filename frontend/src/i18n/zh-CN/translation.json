@@ -1,4 +1,18 @@
 {
+  "bindings": {
+    "mouseLeft": "鼠标左键",
+    "mouseMiddle": "鼠标中键",
+    "mouseRight": "鼠标右键",
+    "mouseBack": "鼠标侧键·后退",
+    "mouseForward": "鼠标侧键·前进",
+    "scrollUp": "滚轮向上",
+    "scrollDown": "滚轮向下",
+    "mouseMoveLeft": "鼠标左移",
+    "mouseMoveRight": "鼠标右移",
+    "key": "{{key}} 键",
+    "mouseOther": "鼠标键 {{n}}",
+    "gamepad": "手柄 {{name}}"
+  },
   "_meta": {
     "languageName": "简体中文"
   },

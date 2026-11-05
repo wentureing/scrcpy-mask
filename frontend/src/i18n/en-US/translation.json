@@ -1,4 +1,18 @@
 {
+  "bindings": {
+    "mouseLeft": "Mouse Left",
+    "mouseMiddle": "Mouse Middle",
+    "mouseRight": "Mouse Right",
+    "mouseBack": "Mouse Back",
+    "mouseForward": "Mouse Forward",
+    "scrollUp": "Wheel Up",
+    "scrollDown": "Wheel Down",
+    "mouseMoveLeft": "Mouse Move Left",
+    "mouseMoveRight": "Mouse Move Right",
+    "key": "{{key}} Key",
+    "mouseOther": "Mouse {{n}}",
+    "gamepad": "Gamepad {{name}}"
+  },
   "_meta": {
     "languageName": "English"
   },

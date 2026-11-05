@@ -63,27 +63,54 @@ export function mappingButtonTransformStyle(
   return `translate(${x}px, ${y}px)`;
 }
 
+const BINDING_I18N_KEYS: Record<string, string> = {
+  "M-Left": "bindings.mouseLeft",
+  "M-Middle": "bindings.mouseMiddle",
+  "M-Right": "bindings.mouseRight",
+  "M-Back": "bindings.mouseBack",
+  "M-Forward": "bindings.mouseForward",
+  ScrollUp: "bindings.scrollUp",
+  ScrollDown: "bindings.scrollDown",
+  MouseMoveLeft: "bindings.mouseMoveLeft",
+  MouseMoveRight: "bindings.mouseMoveRight",
+};
+
 /**
- * 把绑定值（如 "M-Left"、"KeyW"）转成中文显示名。
- * 存储仍用原始值，只有展示层转中文，避免影响已有的映射配置文件。
+ * 把绑定值（如 "M-Left"、"KeyW"）转成当前语言的显示名。
+ * - 中文环境显示“鼠标左键 / W 键”等；
+ * - 其它语言显示各自文案；缺键时回退到 en-US，再缺则回退原始值；
+ * - 存储值始终不变，避免影响已有映射文件。
  */
-export function formatBindingName(name: string): string {
-  const fixed: Record<string, string> = {
-    "M-Left": "鼠标左键",
-    "M-Middle": "鼠标中键",
-    "M-Right": "鼠标右键",
-    "M-Back": "鼠标侧键·后退",
-    "M-Forward": "鼠标侧键·前进",
-    ScrollUp: "滚轮向上",
-    ScrollDown: "滚轮向下",
-    MouseMoveLeft: "鼠标左移",
-    MouseMoveRight: "鼠标右移",
+export function formatBindingName(
+  name: string,
+  t?: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const translate = (key: string, options?: Record<string, unknown>, fallback?: string) => {
+    if (!t) return fallback ?? name;
+    const value = t(key, options);
+    // i18next 缺键时返回 key 本身
+    return value && value !== key ? value : (fallback ?? name);
   };
-  if (fixed[name]) return fixed[name];
-  if (name.startsWith("M-Other-")) return `鼠标键 ${name.slice("M-Other-".length)}`;
-  if (name.startsWith("Key")) return `${name.slice(3)} 键`;
-  if (name.startsWith("Digit")) return `${name.slice(5)} 键`;
-  if (name.startsWith("G-")) return `手柄 ${name.slice(2)}`;
+
+  const fixedKey = BINDING_I18N_KEYS[name];
+  if (fixedKey) return translate(fixedKey);
+
+  if (name.startsWith("M-Other-")) {
+    const n = name.slice("M-Other-".length);
+    return translate("bindings.mouseOther", { n }, `鼠标键 ${n}`);
+  }
+  if (name.startsWith("Key")) {
+    const k = name.slice(3);
+    return translate("bindings.key", { key: k }, `${k} 键`);
+  }
+  if (name.startsWith("Digit")) {
+    const k = name.slice(5);
+    return translate("bindings.key", { key: k }, `${k} 键`);
+  }
+  if (name.startsWith("G-")) {
+    const g = name.slice(2);
+    return translate("bindings.gamepad", { name: g }, `手柄 ${g}`);
+  }
   return name;
 }
 
