@@ -24,6 +24,10 @@ import {
   sethorizontalMaskWidth,
   setHorizontalPosition,
   setMappingLabelOpacity,
+  setFreeLookEnabled,
+  setFreeLookSensitivity,
+  setFreeLookInvertX,
+  setFreeLookInvertY,
   setClipboardSync,
   setLanguage,
   setVideoCodec,
@@ -53,7 +57,7 @@ import {
   setUpdateInfo,
 } from "../store/other";
 import { requestGet, requestPost } from "../utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import i18n, { languageOptions } from "../i18n";
 import { useMessageContext } from "../hooks";
 import {
@@ -94,6 +98,25 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
+  // 端口被占用时后端会静默顺延到下一个端口，这里把那条提示显示出来（读后即清空）。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await requestGet("/api/config/port_notice");
+        if (!cancelled && res.data?.notice) {
+          messageApi?.info(res.data.notice);
+        }
+      } catch {
+        // 提示是附加信息，取不到不打扰用户
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 提示是 take 型的：重复请求第二次返回空，不会重复打扰。
+  }, [messageApi]);
+
   // Unlike optimistic/debounced settings, don't show a backend as active if
   // the server rejected a switch while devices are connected.
   async function changeTouchBackend(value: "sdk" | "uhid") {
@@ -123,8 +146,7 @@ export default function Settings() {
     dispatch(setIsLoading(false));
   }
 
-  async function openDataPath() {
-    dispatch(setIsLoading(true));
+  async function openDataPath() {    dispatch(setIsLoading(true));
     try {
       const res = await requestGet("/api/config/open_data_path");
       messageApi?.success(res.message);
@@ -228,6 +250,46 @@ export default function Settings() {
               step={0.01}
               onChange={(v) => dispatch(setMappingLabelOpacity(v))}
               value={localConfig.mappingLabelOpacity}
+            />
+          </ItemBox>
+          <ItemBox
+            label={t("settings.freeLookEnabled")}
+            tooltip={t("settings.freeLookEnabledTip")}
+          >
+            <Switch
+              checked={localConfig.freeLookEnabled}
+              onChange={(v) => dispatch(setFreeLookEnabled(v))}
+            />
+          </ItemBox>
+          <ItemBox label={t("settings.freeLookSensitivity")}>
+            <Slider
+              className="w-sm"
+              min={0.1}
+              max={5}
+              step={0.1}
+              disabled={!localConfig.freeLookEnabled}
+              onChange={(v) => dispatch(setFreeLookSensitivity(v))}
+              value={localConfig.freeLookEffects?.scale_x ?? 1}
+            />
+          </ItemBox>
+          <ItemBox
+            label={t("mappings.common.invertX.label")}
+            tooltip={t("mappings.common.invertX.hint")}
+          >
+            <Switch
+              checked={!!localConfig.freeLookEffects?.invert_x}
+              disabled={!localConfig.freeLookEnabled}
+              onChange={(v) => dispatch(setFreeLookInvertX(v))}
+            />
+          </ItemBox>
+          <ItemBox
+            label={t("mappings.common.invertY.label")}
+            tooltip={t("mappings.common.invertY.hint")}
+          >
+            <Switch
+              checked={!!localConfig.freeLookEffects?.invert_y}
+              disabled={!localConfig.freeLookEnabled}
+              onChange={(v) => dispatch(setFreeLookInvertY(v))}
             />
           </ItemBox>
           <ItemBox label={t("settings.horizontalMaskWidth")}>

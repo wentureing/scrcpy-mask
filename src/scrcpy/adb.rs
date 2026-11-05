@@ -66,6 +66,28 @@ impl Device {
             })
     }
 
+    /// 删除一条 `adb reverse` 规则。
+    ///
+    /// `adb_client` 只封装了建立 reverse，没有删除接口，所以退回命令行调用。
+    /// 清不干净会让规则一直留在设备上，下次连接在旧端口上"假死"，因此
+    /// 断开、连接失败、scrcpy 进程退出的每条路径都要调它。
+    pub fn remove_reverse(id: &str, remote: &str) -> Result<(), String> {
+        let adb_path = crate::config::LocalConfig::get().adb_path;
+        let output = std::process::Command::new(&adb_path)
+            .args(["-s", id, "reverse", "--remove", remote])
+            .output()
+            .map_err(|e| format!("{} ({}): {}", t!("adb.adbCommandFailed"), adb_path, e))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{}: {}",
+                t!("adb.removeReverseFailed", remote => remote),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ))
+        }
+    }
+
     pub fn forward(id: &str, local: &str, remote: &str) -> Result<(), String> {
         let mut device = Device::new_server_device(id);
         device

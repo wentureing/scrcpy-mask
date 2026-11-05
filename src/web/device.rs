@@ -311,6 +311,7 @@ async fn _control_device(
         if let Err(e) = d_tx.send(cmd) {
             log::error!("[WebServe] controller channel closed: {}", e);
             ControlledDevice::remove_device(&scid).await;
+            remove_adb_reverse(device_id.clone(), scid.clone());
             return Err(WebServerError::internal_error(format!(
                 "controller unavailable: {e}"
             )));
@@ -324,6 +325,7 @@ async fn _control_device(
     let h = Device::shell_process(&device_id, args);
 
     let scid_copy = scid.clone();
+    let device_id_copy = device_id.clone();
     let ws_tx_copy = ws_tx.clone();
     tokio::spawn(async move {
         // 原实现是 `h.await.unwrap().unwrap()`：join 失败或 adb 报错都会 panic 掉这个任务，
@@ -341,6 +343,8 @@ async fn _control_device(
         }
         log::info!("[WebServe] {}", t!("web.device.removingDeviceAfterExit"));
         ControlledDevice::remove_device(&scid_copy).await;
+        // scrcpy 进程已经退出，它建立的 reverse 规则同样要清掉（P0-3）。
+        remove_adb_reverse(device_id_copy, scid_copy.clone());
         ws_tx_copy
             .send(WebSocketNotification::ScrcpyDeviceConnection {
                 scid: scid_copy,
@@ -365,6 +369,26 @@ async fn control_device(
     let audio = payload.audio;
 
     _control_device(&device_id, video, audio, &state.d_tx, &state.ws_tx).await
+}
+
+/// 删除本进程为该设备建立的 `adb reverse` 规则（尽力而为）。
+///
+/// 断开、连接失败、scrcpy 进程退出三条路径都要调用：规则留在设备上，
+/// 下次连接复用 `localabstract:scrcpy_<scid>` 时会指向已经消失的端口，
+/// 表现为"设备能连但控制没反应"。
+///
+/// adb 调用是阻塞的，丢到 blocking 线程池；失败只记日志，不阻断断开流程。
+fn remove_adb_reverse(device_id: String, scid: String) {
+    if device_id.is_empty() || scid.is_empty() {
+        return;
+    }
+    tokio::task::spawn_blocking(move || {
+        let remote = format!("localabstract:scrcpy_{}", scid);
+        match Device::remove_reverse(&device_id, &remote) {
+            Ok(()) => log::info!("[WebServe] removed adb reverse {remote}"),
+            Err(e) => log::warn!("[WebServe] {}", e),
+        }
+    });
 }
 
 #[derive(Deserialize)]
@@ -418,12 +442,19 @@ async fn _decontrol_device(
     for device in device_list {
         if device.device_id == device_id {
             let scid = device.scid.clone();
-            if device.main {
-                d_tx.send(ControllerCommand::ShutdownMain(scid)).unwrap();
+            let command = if device.main {
+                ControllerCommand::ShutdownMain(scid.clone())
             } else {
-                d_tx.send(ControllerCommand::ShutdownSub(scid)).unwrap();
+                ControllerCommand::ShutdownSub(scid.clone())
+            };
+            // controller 线程若已退出（端口被占用后 return 等），send 会失败。
+            // 原来是 unwrap()，会 panic 掉整个 HTTP 请求，导致下面的清理都不执行。
+            if let Err(e) = d_tx.send(command) {
+                log::error!("[WebServe] controller channel closed: {}", e);
             }
             ControlledDevice::remove_device(&device.scid).await;
+            // 主动断开也要清 reverse：否则规则留在设备上，下次连接会指向旧端口（P0-3）。
+            remove_adb_reverse(device.device_id.clone(), scid);
             return Ok(JsonResponse::success(
                 format!("{}: {}", t!("web.device.decontrolDevice"), device_id),
                 None,

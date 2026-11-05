@@ -124,21 +124,18 @@ fn main() {
 
 /// 遍历当前受控设备，逐条移除 `adb reverse` 规则。
 fn cleanup_adb_reverse() {
-    use scrcpy_mask::utils::share::ControlledDevice;
+    use scrcpy_mask::{scrcpy::adb::Device, utils::share::ControlledDevice};
 
-    let config = LocalConfig::get();
-    let runtime = match tokio::runtime::Builder::new_current_thread()
+    let devices = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     {
-        Ok(runtime) => runtime,
+        Ok(runtime) => runtime.block_on(ControlledDevice::get_device_list()),
         Err(e) => {
             eprintln!("[Teardown] cannot build runtime: {e}");
             return;
         }
     };
-
-    let devices = runtime.block_on(ControlledDevice::get_device_list());
     if devices.is_empty() {
         return;
     }
@@ -146,18 +143,9 @@ fn cleanup_adb_reverse() {
 
     for device in devices {
         let remote = format!("localabstract:scrcpy_{}", device.scid);
-        match std::process::Command::new(&config.adb_path)
-            .args(["-s", &device.device_id, "reverse", "--remove", &remote])
-            .output()
-        {
-            Ok(out) if out.status.success() => {
-                log::info!("[Teardown] removed adb reverse {remote}");
-            }
-            Ok(out) => log::warn!(
-                "[Teardown] failed to remove {remote}: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            ),
-            Err(e) => log::warn!("[Teardown] cannot run adb ({}): {e}", config.adb_path),
+        match Device::remove_reverse(&device.device_id, &remote) {
+            Ok(()) => log::info!("[Teardown] removed adb reverse {remote}"),
+            Err(e) => log::warn!("[Teardown] {}", e),
         }
     }
 }

@@ -30,7 +30,11 @@ import {
 } from "react";
 import IconButton from "../common/IconButton";
 
-import type { ButtonBinding, MappingScriptHooks } from "./mapping";
+import type {
+  ButtonBinding,
+  InputEffectsConfig,
+  MappingScriptHooks,
+} from "./mapping";
 import { EVENT_CODE_TO_KEY_CODE, KEY_NAMES } from "./keyCode";
 import { debounce } from "../../utils";
 import { useTranslation } from "react-i18next";
@@ -155,6 +159,53 @@ export function SettingMappingId({ id }: { id: string }) {
         {id}
       </Typography.Text>
     </ItemBox>
+  );
+}
+
+type SettingInputEffectsProps = {
+  effects?: InputEffectsConfig;
+  onEffectsChange: (effects: InputEffectsConfig) => void;
+};
+
+/**
+ * 通用"输入翻转"设置：任何吃方向/位移的按钮都可以直接挂上，
+ * 后端只需在消费输入的地方调用 `InputEffects::apply`。
+ */
+export function SettingInputEffects({
+  effects,
+  onEffectsChange,
+}: SettingInputEffectsProps) {
+  const { t } = useTranslation();
+  const current: InputEffectsConfig = {
+    invert_x: false,
+    invert_y: false,
+    ...effects,
+  };
+
+  const update = (patch: Partial<InputEffectsConfig>) =>
+    onEffectsChange({ ...current, ...patch });
+
+  return (
+    <>
+      <ItemBox
+        label={t("mappings.common.invertX.label")}
+        tooltip={t("mappings.common.invertX.hint")}
+      >
+        <Switch
+          checked={current.invert_x}
+          onChange={(v) => update({ invert_x: v })}
+        />
+      </ItemBox>
+      <ItemBox
+        label={t("mappings.common.invertY.label")}
+        tooltip={t("mappings.common.invertY.hint")}
+      >
+        <Switch
+          checked={current.invert_y}
+          onChange={(v) => update({ invert_y: v })}
+        />
+      </ItemBox>
+    </>
   );
 }
 

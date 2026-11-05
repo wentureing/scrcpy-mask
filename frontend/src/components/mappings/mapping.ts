@@ -42,6 +42,21 @@ export interface MappingScriptHooks {
   after_script: string;
 }
 
+/**
+ * 按钮级输入效果（与后端 `InputEffects` 一一对应）。
+ * 缺省即"不翻转、增益 1"，所以旧映射文件不需要任何改动。
+ */
+export interface InputEffectsConfig {
+  invert_x: boolean;
+  invert_y: boolean;
+  scale_x?: number;
+  scale_y?: number;
+}
+
+export function defaultInputEffects(): InputEffectsConfig {
+  return { invert_x: false, invert_y: false };
+}
+
 export function defaultScriptHooks(): MappingScriptHooks {
   return {
     before_script: "",
@@ -378,6 +393,7 @@ export interface ObservationConfig {
   sensitivity_x: number;
   sensitivity_y: number;
   script_hooks: MappingScriptHooks;
+  effects?: InputEffectsConfig;
   type: "Observation";
 }
 
@@ -410,6 +426,7 @@ export interface FpsConfig {
   max_offset_y: number;
   touch_mode: FpsTouchMode;
   interaction: FpsInteractionConfig | null;
+  effects?: InputEffectsConfig;
   type: "Fps";
 }
 

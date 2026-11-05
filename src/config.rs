@@ -8,6 +8,7 @@ use std::{
 
 use crate::{
     DEFAULT_LANGUAGE,
+    mask::mapping::effects::InputEffects,
     scrcpy::media::{AudioCodec, AudioSource, VideoCodec},
     utils::{relate_to_data_path, relate_to_root_path},
 };
@@ -130,6 +131,14 @@ pub struct LocalConfig {
     /// 只把鼠标位移的横向分量传给设备（纵向位移丢弃）。
     /// 取巧实现：不做"全向读取"，直接在消费点清零 y 分量。默认关闭，保持原有手感。
     pub mouse_horizontal_only: bool,
+    // free look
+    /// 无点击鼠标轨迹转视角：窗口聚焦时不需要按住任何键/鼠标键，
+    /// 鼠标位移直接合成"落下 → 移动 → 松手"的滑动手势。默认关闭。
+    pub free_look_enabled: bool,
+    /// free look 的输入效果：`scale` 承载灵敏度，`invert_x/invert_y` 承载翻转。
+    /// 与按钮级 `effects` 是同一套结构，只是这里挂在全局配置上。
+    #[serde(default)]
+    pub free_look_effects: InputEffects,
 }
 
 impl Default for LocalConfig {
@@ -170,6 +179,8 @@ impl Default for LocalConfig {
             screen_off_timeout: -1, // default keep device setting
             power_off_on_close: false,
             mouse_horizontal_only: false,
+            free_look_enabled: false,
+            free_look_effects: InputEffects::default(),
         }
     }
 }
@@ -265,6 +276,40 @@ impl LocalConfig {
         CONFIG.read().unwrap().mouse_horizontal_only
     }
 
+    /// free look 开关。每帧读取，避免 clone 整个配置。
+    pub fn free_look_enabled() -> bool {
+        CONFIG.read().unwrap().free_look_enabled
+    }
+
+    /// free look 的输入效果（灵敏度 + 翻转）。每帧读取。
+    pub fn free_look_effects() -> InputEffects {
+        CONFIG.read().unwrap().free_look_effects
+    }
+
+    /// 灵敏度同时写两个轴的 scale（前端只有一个滑块）。
+    pub fn set_free_look_sensitivity(value: f32) {
+        let mut config = CONFIG.write().unwrap();
+        config.free_look_effects.scale_x = value;
+        config.free_look_effects.scale_y = value;
+        drop(config);
+        let _ = Self::save();
+    }
+
+    /// 只改翻转位，保留灵敏度。
+    pub fn set_free_look_invert_x(value: bool) {
+        let mut config = CONFIG.write().unwrap();
+        config.free_look_effects.invert_x = value;
+        drop(config);
+        let _ = Self::save();
+    }
+
+    pub fn set_free_look_invert_y(value: bool) {
+        let mut config = CONFIG.write().unwrap();
+        config.free_look_effects.invert_y = value;
+        drop(config);
+        let _ = Self::save();
+    }
+
     /// 端口被占用后切换到候选端口：只改内存，不写盘。
     /// 不持久化是有意的——占用往往是临时的，记住新端口会让配置持续漂移。
     pub fn set_controller_port_in_memory(port: u16) {
@@ -309,5 +354,6 @@ impl LocalConfig {
         (stay_awake, bool),
         (screen_off_timeout, i32),
         (power_off_on_close, bool),
+        (free_look_enabled, bool),
     );
 }

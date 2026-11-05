@@ -59,6 +59,15 @@ export interface LocalConfigState {
   // mapping
   activeMappingFile: string;
   mappingLabelOpacity: number;
+  // free look
+  freeLookEnabled: boolean;
+  /** 与后端 `free_look_effects` 对应：scale 即灵敏度，invert 即翻转。 */
+  freeLookEffects: {
+    invert_x: boolean;
+    invert_y: boolean;
+    scale_x: number;
+    scale_y?: number;
+  };
   // language
   language: string;
   // clipboard sync
@@ -100,6 +109,8 @@ const initialState: LocalConfigState = {
   horizontalPosition: [0, 0],
   activeMappingFile: "",
   mappingLabelOpacity: 0,
+  freeLookEnabled: false,
+  freeLookEffects: { invert_x: false, invert_y: false, scale_x: 1, scale_y: 1 },
   language: "en-US",
   clipboardSync: true,
   touchBackend: "sdk",
@@ -185,6 +196,23 @@ const localConfigSlice = createSlice({
     setMappingLabelOpacity: (state, action: PayloadAction<number>) => {
       state.mappingLabelOpacity = action.payload;
       updateLocalConfig("mapping_label_opacity", action.payload);
+    },
+    setFreeLookEnabled: (state, action: PayloadAction<boolean>) => {
+      state.freeLookEnabled = action.payload;
+      updateLocalConfig("free_look_enabled", action.payload, 0, false);
+    },
+    setFreeLookSensitivity: (state, action: PayloadAction<number>) => {
+      state.freeLookEffects.scale_x = action.payload;
+      state.freeLookEffects.scale_y = action.payload;
+      updateLocalConfig("free_look_sensitivity", action.payload, 500, false);
+    },
+    setFreeLookInvertX: (state, action: PayloadAction<boolean>) => {
+      state.freeLookEffects.invert_x = action.payload;
+      updateLocalConfig("free_look_invert_x", action.payload, 0, false);
+    },
+    setFreeLookInvertY: (state, action: PayloadAction<boolean>) => {
+      state.freeLookEffects.invert_y = action.payload;
+      updateLocalConfig("free_look_invert_y", action.payload, 0, false);
     },
     setLanguage: (state, action: PayloadAction<string>) => {
       state.language = action.payload;
@@ -285,6 +313,10 @@ export const {
   setHorizontalPosition,
   setActiveMappingFile,
   setMappingLabelOpacity,
+  setFreeLookEnabled,
+  setFreeLookSensitivity,
+  setFreeLookInvertX,
+  setFreeLookInvertY,
   setLanguage,
   setClipboardSync,
   setVideoCodec,

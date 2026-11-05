@@ -24,6 +24,7 @@ use crate::{
                 ActiveCursorFpsConfig, CursorPosition, CursorState, FPS_MARGIN, FpsTouchMode,
                 release_fps_touches, restore_fps_touch,
             },
+            effects::InputEffects,
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
                 run_script_hook,
@@ -73,6 +74,7 @@ pub struct BindMappingFps {
     pub max_offset_y: f32,
     pub touch_mode: FpsTouchMode,
     pub interaction: Option<FpsInteraction>,
+    pub effects: InputEffects,
     pub bind: ButtonBinding,
     pub input_binding: InputBinding,
 }
@@ -90,6 +92,7 @@ impl From<MappingFps> for BindMappingFps {
             max_offset_y: value.max_offset_y,
             touch_mode: value.touch_mode,
             interaction: value.interaction,
+            effects: value.effects,
             bind: value.bind.clone(),
             input_binding: PulseBinding::just_pressed(value.bind).0,
         }
@@ -121,6 +124,9 @@ pub struct MappingFps {
     pub touch_mode: FpsTouchMode,
     #[serde(default)]
     pub interaction: Option<FpsInteraction>,
+    /// 输入效果（翻转/增益）。缺省即旧行为。
+    #[serde(default)]
+    pub effects: InputEffects,
     pub bind: ButtonBinding,
 }
 
@@ -146,6 +152,7 @@ pub fn enter_fps_mode(
     fps_config.original_size = original_size;
     fps_config.ignore_fps_motion = false;
     fps_config.sensitivity = (mapping.sensitivity_x, mapping.sensitivity_y).into();
+    fps_config.effects = mapping.effects;
     fps_config.max_offset = Vec2::new(mapping.max_offset_x, mapping.max_offset_y);
     fps_config.touch_mode = mapping.touch_mode;
     fps_config.touch_active = true;

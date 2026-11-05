@@ -12,7 +12,9 @@ use bevy::{
 use crate::{
     config::LocalConfig,
     mask::{
-        mapping::{MappingState, mask_not_resizing, utils::ControlMsgHelper},
+        mapping::{
+            MappingState, effects::InputEffects, mask_not_resizing, utils::ControlMsgHelper,
+        },
         mask_command::{MaskSize, TitlebarState},
         ui::basic::{MaskContentEntity, TITLEBAR_HEIGHT},
     },
@@ -213,6 +215,8 @@ pub struct ActiveCursorFpsConfig {
     pub touch_active: bool,
     pub ignore_fps_motion: bool,
     pub sensitivity: Vec2,
+    /// 视角输入的翻转/增益，来自当前 Fps 映射的 `effects`。
+    pub effects: InputEffects,
     pub pointer_id: u64,
     pub active_pointer_id: u64,
     pub original_pos: Vec2,
@@ -228,6 +232,7 @@ impl Default for ActiveCursorFpsConfig {
             touch_active: false,
             ignore_fps_motion: false,
             sensitivity: Vec2::ZERO,
+            effects: InputEffects::default(),
             pointer_id: 0,
             active_pointer_id: 0,
             original_pos: Vec2::ZERO,
@@ -904,7 +909,8 @@ fn handle_cursor_fps(
         // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
         raw_delta.y = 0.0;
     }
-    let delta = raw_delta * fps_config.sensitivity;
+    // 输入效果（翻转/增益）作用在输入轴本身，所以翻转与灵敏度互不干扰。
+    let delta = fps_config.effects.apply(raw_delta) * fps_config.sensitivity;
 
     if let Some(deferred_delta) =
         cleanup_pending_fps_touch(&cs_tx_res.0, &mut fps_config, mask_size.0)
@@ -998,6 +1004,7 @@ mod tests {
             touch_active: true,
             ignore_fps_motion: false,
             sensitivity: Vec2::ONE,
+            effects: InputEffects::default(),
             pointer_id: 0,
             active_pointer_id: 0,
             original_pos: Vec2::new(500.0, 500.0),

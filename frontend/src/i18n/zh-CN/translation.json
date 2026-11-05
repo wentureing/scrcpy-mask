@@ -130,6 +130,14 @@
       "randomOffsetY": "随机偏移 Y",
       "randomOffsetXHint": "每次激活时对触摸坐标施加的水平随机偏移，在 [-偏移, +偏移] 内随机取值。设为 0 禁用。",
       "randomOffsetYHint": "每次激活时对触摸坐标施加的垂直随机偏移，在 [-偏移, +偏移] 内随机取值。设为 0 禁用。",
+      "invertX": {
+        "label": "翻转 X 轴",
+        "hint": "把输入的水平方向反过来：鼠标右移变成视角左转，A 键变成摇杆向右。对任何吃方向/位移的按钮都生效。"
+      },
+      "invertY": {
+        "label": "翻转 Y 轴",
+        "hint": "把输入的垂直方向反过来：鼠标下移变成视角上抬，W 键变成摇杆向下。"
+      },
       "scriptHooks": {
         "before": "前置脚本",
         "beforeHint": "在该映射动作执行前运行。留空则跳过。脚本会阻塞当前映射流程，耗时脚本可能导致输入延迟或映射卡住。",
@@ -433,6 +441,9 @@
     "verticalMaskHeight": "竖屏蒙版高度",
     "verticalMaskPosition": "竖屏蒙版位置",
     "mappingLabelOpacity": "映射标签不透明度",
+    "freeLookEnabled": "无点击转视角",
+    "freeLookEnabledTip": "开启后，窗口获得焦点时不用按住任何键，鼠标移动方向即角色转头方向（每次移动会合成一次短暂的滑动手势）。按住自由视角映射时自动让位",
+    "freeLookSensitivity": "无点击转视角灵敏度",
     "clipboardSync": "剪切板同步",
     "videoCodec": "视频编码",
     "videoBitRate": "视频码率",

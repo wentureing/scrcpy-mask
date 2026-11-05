@@ -1,10 +1,50 @@
 use once_cell::sync::Lazy;
 use serde::Serialize;
+use std::sync::Mutex;
 use tokio::sync::RwLock;
 
 use crate::scrcpy::ScrcpyDevice;
 
 static CONTROLLED_DEVICES: Lazy<RwLock<Vec<ScrcpyDevice>>> = Lazy::new(|| RwLock::new(Vec::new()));
+
+/// 端口顺延提示：起点端口被占用时记一条，前端取走后清空。
+static PORT_NOTICE: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+/// "端口被占用、已改用别的端口"的提示。
+///
+/// 只放内存：端口号本身也不落盘（见 `docs/16` §16.4），提示自然也不必持久化。
+pub struct PortNotice;
+
+impl PortNotice {
+    pub fn set(text: String) {
+        if let Ok(mut slot) = PORT_NOTICE.lock() {
+            *slot = Some(text);
+        }
+    }
+
+    /// 取走提示（读后清空）。锁中毒时返回 None，不让提示影响主流程。
+    pub fn take() -> Option<String> {
+        PORT_NOTICE.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
+/// "端口被占用、已改用别的端口"的提示。
+///
+/// 只放内存：端口号本身也不落盘（见 `docs/16` §16.4），提示自然也不必持久化。
+pub struct PortNotice;
+
+impl PortNotice {
+    pub fn set(text: String) {
+        if let Ok(mut slot) = PORT_NOTICE.lock() {
+            *slot = Some(text);
+        }
+    }
+
+    /// 取走提示（读后清空）。锁中毒时返回 None，不让提示影响主流程。
+    pub fn take() -> Option<String> {
+        PORT_NOTICE.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
 
 pub struct ControlledDevice;
 

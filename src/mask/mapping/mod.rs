@@ -4,8 +4,10 @@ pub mod cast_spell;
 pub mod config;
 pub mod cursor;
 pub mod direction_pad;
+pub mod effects;
 pub mod executor;
 pub mod fire;
+pub mod free_look;
 pub mod observation;
 pub mod pipeline;
 pub mod raw_input;
@@ -79,6 +81,7 @@ impl Plugin for MappingPlugins {
                     fire::fire_init,
                     cast_spell::cast_spell_init,
                     observation::init_observation,
+                    free_look::free_look_init,
                     raw_input::raw_input_init,
                     script::script_init,
                 ),
@@ -108,6 +111,7 @@ impl Plugin for MappingPlugins {
                     observation::handle_observation,
                     observation::handle_observation_trigger,
                     observation::handle_observation_focus_lost,
+                    free_look::handle_free_look,
                     fire::handle_fps,
                     // raw input won't work in fps mode
                     raw_input::handle_raw_input.run_if(not(in_state(CursorState::Fps))),
@@ -149,6 +153,7 @@ impl Plugin for MappingPlugins {
                     tap::cleanup_tap_on_stop,
                     direction_pad::cleanup_direction_pad_on_stop,
                     observation::cleanup_observation_on_stop,
+                    free_look::cleanup_free_look_on_stop,
                     cast_spell::cleanup_cast_spell_on_stop,
                     fire::cleanup_fire_on_stop,
                     fire::cleanup_fps_on_stop,
@@ -167,6 +172,7 @@ impl Plugin for MappingPlugins {
                     tap::cleanup_tap_on_stop,
                     direction_pad::cleanup_direction_pad_on_stop,
                     observation::cleanup_observation_on_stop,
+                    free_look::cleanup_free_look_on_stop,
                     cast_spell::cleanup_cast_spell_on_stop,
                     fire::cleanup_fire_on_stop,
                     fire::cleanup_fps_on_stop,

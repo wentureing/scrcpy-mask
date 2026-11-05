@@ -17,11 +17,13 @@ use crate::{
     config::LocalConfig,
     mask::mask_command::MaskCommand,
     scrcpy::{
+        adb::Device,
         connection::ScrcpyConnection,
         control_msg::{ScrcpyControlMsg, ScrcpyDeviceMsg},
     },
     utils::{
-        LatestVideoFrame, mask_win_move_helper, share::ControlledDevice,
+        LatestVideoFrame, mask_win_move_helper,
+        share::{ControlledDevice, PortNotice},
         socket::{bind_with_candidates, disable_inheritance},
     },
     web::ws::WebSocketNotification,
@@ -73,7 +75,8 @@ async fn accept_with_timeout(listener: &TcpListener) -> AcceptOutcome {
 /// 连接失败/超时的统一回滚：通知前端、清理受控记录、移除取消令牌。
 ///
 /// `signal_map` 里的 token 是在 accept 之前插入的，这里必须成对移除，否则会泄漏。
-/// reverse 规则的清理在 P0-3 里接到这里。
+/// 同时删掉该设备建立的 `adb reverse` 规则（P0-3）：这条路径原来只删记录，
+/// 规则会一直留在设备上，下次连接在旧端口上"假死"。
 async fn rollback_pending_connection(
     scid: &str,
     socket_id: &str,
@@ -87,7 +90,24 @@ async fn rollback_pending_connection(
             connected: false,
         })
         .ok();
+    // 删记录之前先找出 device_id：remove_device 之后就没法反查了。
+    let device_id = ControlledDevice::get_device_list()
+        .await
+        .into_iter()
+        .find(|device| device.scid == scid)
+        .map(|device| device.device_id);
     ControlledDevice::remove_device(scid).await;
+    if let Some(device_id) = device_id {
+        let scid = scid.to_string();
+        // adb 调用是阻塞的，丢到 blocking 线程池；失败只记日志。
+        tokio::task::spawn_blocking(move || {
+            let remote = format!("localabstract:scrcpy_{}", scid);
+            match Device::remove_reverse(&device_id, &remote) {
+                Ok(()) => log::info!("[Controller] removed adb reverse {}", remote),
+                Err(e) => log::warn!("[Controller] {}", e),
+            }
+        });
+    }
     signal_map.remove(socket_id);
 }
 
@@ -183,8 +203,17 @@ impl Controller {
         ws_tx: broadcast::Sender<WebSocketNotification>,
     ) {
         log::info!("[Controller] {}: {}", t!("scrcpy.startingController"), addr);
+        let desired_controller_port = addr.port();
         let (listener, addr) = match bind_with_candidates(addr, |port| {
-            LocalConfig::set_controller_port_in_memory(port)
+            LocalConfig::set_controller_port_in_memory(port);
+            if port != desired_controller_port {
+                // 端口是"静默顺延"的，用户只会看到设备连不上，所以留一条提示给前端（P0-5）。
+                PortNotice::set(format!(
+                    "控制服务端口 {} 已被占用，本次改用 {}（端口只改内存、不写盘）。\
+                     若设备连不上，请检查是否有旧的本程序进程还占着端口。",
+                    desired_controller_port, port
+                ));
+            }
         })
         .await
         {

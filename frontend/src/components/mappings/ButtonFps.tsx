@@ -21,6 +21,7 @@ import { ItemBox, ItemBoxContainer } from "../common/ItemBox";
 import {
   SettingBind,
   SettingFooter,
+  SettingInputEffects,
   SettingMappingId,
   SettingModal,
   SettingNote,
@@ -600,6 +601,10 @@ function Setting({
             />
           </Space.Compact>
         </ItemBox>
+        <SettingInputEffects
+          effects={config.effects}
+          onEffectsChange={(effects) => onConfigChange({ ...config, effects })}
+        />
         <SettingNote
           note={config.note}
           onNoteChange={(note) => onConfigChange({ ...config, note })}

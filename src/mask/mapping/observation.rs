@@ -19,6 +19,7 @@ use crate::{
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
+            effects::InputEffects,
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
                 run_script_hook,
@@ -49,13 +50,7 @@ pub fn cleanup_observation_on_stop(
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
 ) {
     for (action, item) in active_map.0.drain() {
-        let mut delta = (cursor_pos.0 - item.start_cursor_pos) * item.sensitivity;
-        if item.max_radius > 0.0 {
-            let len = delta.length();
-            if len > item.max_radius {
-                delta = delta / len * item.max_radius;
-            }
-        }
+        let delta = item.view_delta(cursor_pos.0);
         ControlMsgHelper::send_touch(
             &cs_tx_res.0,
             MotionEventAction::Up,
@@ -89,6 +84,7 @@ pub struct BindMappingObservation {
     pub random_offset_x: f32,
     pub random_offset_y: f32,
     pub max_radius: f32,
+    pub effects: InputEffects,
     pub script_hooks: BindMappingScriptHooks,
 }
 
@@ -106,6 +102,7 @@ impl From<MappingObservation> for BindMappingObservation {
             random_offset_x: value.random_offset_x,
             random_offset_y: value.random_offset_y,
             max_radius: value.max_radius,
+            effects: value.effects,
             script_hooks: value.script_hooks.into(),
         }
     }
@@ -138,6 +135,9 @@ pub struct MappingObservation {
         serialize_with = "crate::mask::mapping::serde_float::serialize_f32_3dp"
     )]
     pub max_radius: f32,
+    /// 输入效果（翻转/增益）。缺省即旧行为。
+    #[serde(default)]
+    pub effects: InputEffects,
     #[serde(default)]
     pub script_hooks: MappingScriptHooks,
 }
@@ -150,6 +150,13 @@ impl ValidateMappingConfig for MappingObservation {
 
 #[derive(Resource, Default)]
 pub struct ActiveObservationMap(HashMap<String, ObservationItem>);
+
+impl ActiveObservationMap {
+    /// free look 用它判断"当前是否有观察映射按着"，避免两边同时驱动视角。
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
 
 #[derive(Resource, Default)]
 pub struct ObservationLifecycleState(MappingLifecycleState<ObservationReleaseContext>);
@@ -172,6 +179,21 @@ struct ObservationItem {
     pointer_id: u64,
     sensitivity: Vec2,
     max_radius: f32,
+    effects: InputEffects,
+}
+
+impl ObservationItem {
+    /// 视角位移：先对输入位移做效果换算（翻转/增益），再乘灵敏度并夹到最大半径。
+    fn view_delta(&self, cursor_pos: Vec2) -> Vec2 {
+        let mut delta = self.effects.apply(cursor_pos - self.start_cursor_pos) * self.sensitivity;
+        if self.max_radius > 0.0 {
+            let len = delta.length();
+            if len > self.max_radius {
+                delta = delta / len * self.max_radius;
+            }
+        }
+        delta
+    }
 }
 
 fn observation_has_before_hook(mapping: &BindMappingObservation) -> bool {
@@ -215,6 +237,7 @@ fn apply_observation_down(
             pointer_id,
             sensitivity,
             max_radius: mapping.max_radius,
+            effects: mapping.effects,
         },
     );
 }
@@ -227,13 +250,7 @@ fn apply_observation_up(
     cursor_pos: Vec2,
 ) -> bool {
     if let Some(item) = active_map.0.remove(action) {
-        let mut delta = (cursor_pos - item.start_cursor_pos) * item.sensitivity;
-        if item.max_radius > 0.0 {
-            let len = delta.length();
-            if len > item.max_radius {
-                delta = delta / len * item.max_radius;
-            }
-        }
+        let delta = item.view_delta(cursor_pos);
         ControlMsgHelper::send_touch(
             &cs_tx.0,
             MotionEventAction::Up,
@@ -254,13 +271,7 @@ pub fn handle_observation_trigger(
     mut active_map: ResMut<ActiveObservationMap>,
 ) {
     for (_, item) in active_map.0.iter_mut() {
-        let mut delta = (cursor_pos.0 - item.start_cursor_pos) * item.sensitivity;
-        if item.max_radius > 0.0 {
-            let len = delta.length();
-            if len > item.max_radius {
-                delta = delta / len * item.max_radius;
-            }
-        }
+        let delta = item.view_delta(cursor_pos.0);
         ControlMsgHelper::send_touch(
             &cs_tx_res.0,
             MotionEventAction::Move,

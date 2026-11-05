@@ -18,7 +18,7 @@ use crate::{
     },
     utils::{
         IDENTIFIER, check_for_update, get_mask_scale_factor, mask_win_move_helper,
-        share::{ControlledDevice, UpdateInfo},
+        share::{ControlledDevice, PortNotice, UpdateInfo},
     },
     web::{JsonResponse, WebServerError},
 };
@@ -34,10 +34,19 @@ pub fn routers(
     Router::new()
         .route("/get_config", get(get_config))
         .route("/update_config", post(update_config))
+        .route("/port_notice", get(get_port_notice))
         .route("/open_data_path", get(open_data_path))
         .route("/get_update_info", get(get_update_info))
         .route("/check_update", get(check_update))
         .with_state(AppStatConfig { m_tx })
+}
+
+/// 取走"端口被占用、已改用别的端口"的提示（取走即清空，避免每次进设置页都弹）。
+async fn get_port_notice() -> Result<JsonResponse, WebServerError> {
+    Ok(JsonResponse::success(
+        "port notice".to_string(),
+        Some(serde_json::json!({ "notice": PortNotice::take() })),
+    ))
 }
 
 async fn get_config() -> Result<JsonResponse, WebServerError> {
@@ -710,6 +719,57 @@ async fn update_config(
             return Err(WebServerError::bad_request(
                 "Power off on close must be bool",
             ));
+        }
+        "free_look_enabled" => {
+            if let Some(value) = payload.value.as_bool() {
+                LocalConfig::set_free_look_enabled(value);
+                return Ok(JsonResponse::success(
+                    if value {
+                        "无点击转视角已开启".to_string()
+                    } else {
+                        "无点击转视角已关闭".to_string()
+                    },
+                    None,
+                ));
+            }
+            return Err(WebServerError::bad_request(
+                "free_look_enabled must be bool",
+            ));
+        }
+        "free_look_sensitivity" => {
+            if let Some(value) = payload.value.as_f64() {
+                let value = value as f32;
+                if value.is_finite() && (0.05..=20.0).contains(&value.abs()) {
+                    LocalConfig::set_free_look_sensitivity(value);
+                    return Ok(JsonResponse::success(
+                        format!("无点击转视角灵敏度已设为 {}", value),
+                        None,
+                    ));
+                }
+            }
+            return Err(WebServerError::bad_request(
+                "free_look_sensitivity must be a finite number within 0.05..=20 (negative reverses)",
+            ));
+        }
+        "free_look_invert_x" => {
+            if let Some(value) = payload.value.as_bool() {
+                LocalConfig::set_free_look_invert_x(value);
+                return Ok(JsonResponse::success(
+                    format!("无点击转视角 X 轴翻转: {}", value),
+                    None,
+                ));
+            }
+            return Err(WebServerError::bad_request("free_look_invert_x must be bool"));
+        }
+        "free_look_invert_y" => {
+            if let Some(value) = payload.value.as_bool() {
+                LocalConfig::set_free_look_invert_y(value);
+                return Ok(JsonResponse::success(
+                    format!("无点击转视角 Y 轴翻转: {}", value),
+                    None,
+                ));
+            }
+            return Err(WebServerError::bad_request("free_look_invert_y must be bool"));
         }
         _ => Err(WebServerError::bad_request(format!(
             "{}: {}",
