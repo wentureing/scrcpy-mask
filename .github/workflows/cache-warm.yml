@@ -80,6 +80,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-x64-check
+          # 注意：这里刻意不设 add-job-id-key，因为 ci.yml 的 check job 也没设，
+          # 两边的 key 必须逐字节一致才有意义。job 名就叫 check，不要改。
           env-vars: ""
           cache-on-failure: true
 
@@ -136,6 +138,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-x64-package
+          # 与 ci.yml / release.yml 保持一致，否则 job 名（package-warm）会进 key，导致三方各存一份。
+          add-job-id-key: false
           env-vars: ""
           cache-on-failure: true
 

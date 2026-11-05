@@ -1,0 +1,91 @@
+name: Cache GC
+
+# 缓存卫生：删掉两类垃圾条目，避免 10 GB 配额被 LRU 误伤。
+#   1) sccache/* —— sccache 方案已废弃（Windows 命令行 os error 206），残留条目纯占位；
+#   2) 超过 N 天未被访问的条目 —— GitHub 自己 7 天会清，这里留 30 天更宽松，
+#      主要针对"频繁换 Cargo.lock 产生的旧 target key"。
+#
+# 注意：本文件要在默认分支（master）上，schedule / 手动入口才会出现。
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'      # 每周一 UTC 03:00
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只列出将删除的条目，不实际删除'
+        required: false
+        default: true
+        type: boolean
+      max_age_days:
+        description: '删除超过 N 天未被访问的缓存'
+        required: false
+        default: '30'
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Collect and delete stale caches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # schedule 触发时 inputs 为空，用 || 兜底成"真删 + 30 天"
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          MAX_AGE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_age_days || '30' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Authorization          = "Bearer $env:GH_TOKEN"
+            Accept                 = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $base   = "https://api.github.com/repos/$env:REPO/actions/caches"
+          $dry    = $env:DRY_RUN -match '^true$'
+          $maxAge = [int]$env:MAX_AGE_DAYS
+          $cutoff = (Get-Date).ToUniversalTime().AddDays(-$maxAge)
+
+          $all = @()
+          for ($page = 1; $page -le 5; $page++) {
+            $r = Invoke-RestMethod -Uri "$base`?per_page=100&page=$page" -Headers $headers
+            if (-not $r.actions_caches) { break }
+            $all += $r.actions_caches
+            if ($all.Count -ge $r.total_count) { break }
+          }
+
+          $sccache = @($all | Where-Object { $_.key -like 'sccache/*' })
+          $stale   = @($all | Where-Object {
+              $_.key -notlike 'sccache/*' -and ([datetime]$_.last_accessed_at) -lt $cutoff
+            })
+          $targets = @(@($sccache) + @($stale) | Sort-Object id -Unique)
+
+          "总计 $($all.Count) 条；sccache 残留 $($sccache.Count) 条；超 $maxAge 天未访问 $($stale.Count) 条；待删 $($targets.Count) 条" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          foreach ($t in $targets) {
+            "- ``{0}``  {1:N1} MB  last_accessed={2}" -f $t.key, ($t.size_in_bytes / 1MB), $t.last_accessed_at |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+          if ($dry) {
+            "**DRY RUN**：未删除任何条目。" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+
+          $failed = 0
+          foreach ($t in $targets) {
+            try {
+              Invoke-RestMethod -Method Delete -Uri "$base/$($t.id)" -Headers $headers | Out-Null
+            } catch {
+              $failed++
+              Write-Warning "删除失败 $($t.id): $($_.Exception.Message)"
+            }
+          }
+          "已删除 $($targets.Count - $failed) 条，失败 $failed 条。" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

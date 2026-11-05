@@ -107,9 +107,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # 与 ci.yml 的 package job 共用同一份 release 缓存。
+          # add-job-id-key: false 是必需的：否则 key 里会带 job 名（这里是 windows），
+          # 与 ci.yml 的 package job 对不上。
           # 注意：tag 触发的 run 只能恢复"当前 tag + 默认分支"的缓存，
           # 所以只有 master 上写过这份缓存（cache-warm.yml 的 release 预热）时才命中。
           shared-key: windows-x64-package
+          add-job-id-key: false
           env-vars: ""
           cache-on-failure: true
 
