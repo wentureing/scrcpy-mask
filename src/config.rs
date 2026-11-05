@@ -84,6 +84,10 @@ pub struct LocalConfig {
     #[serde(default = "default_web_bind_addr")]
     pub web_bind_addr: Ipv4Addr,
     pub controller_port: u16,
+    // connect
+    /// 等待设备端 scrcpy server 连回来的超时（秒）。
+    /// 慢设备上 `adb push` + `app_process` 冷启动常要 2-4 秒，默认 10 秒留足余量。
+    pub connect_timeout_secs: u64,
     // adb
     pub adb_path: String,
     pub adb_connect_address: String,
@@ -132,6 +136,7 @@ impl Default for LocalConfig {
             web_port: 27799,
             web_bind_addr: default_web_bind_addr(),
             controller_port: 27798,
+            connect_timeout_secs: 10,
             always_on_top: true,
             titlebar_visible: true,
             vertical_mask_height: 720,

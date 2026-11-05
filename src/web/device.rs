@@ -258,7 +258,15 @@ async fn _control_device(
     ControlledDevice::add_device(device_id.clone(), scid.clone(), main, socket_id).await;
     // send command to controller server
     for cmd in commands {
-        d_tx.send(cmd).unwrap();
+        // controller 线程若已退出（例如端口被占用后 return），send 会失败。
+        // 原来是 unwrap()，会 panic 掉整个 HTTP 请求而反向清理不执行；这里改为回滚 + 明确错误。
+        if let Err(e) = d_tx.send(cmd) {
+            log::error!("[WebServe] controller channel closed: {}", e);
+            ControlledDevice::remove_device(&scid).await;
+            return Err(WebServerError::internal_error(format!(
+                "controller unavailable: {e}"
+            )));
+        }
     }
 
     // run scrcpy app
@@ -270,7 +278,19 @@ async fn _control_device(
     let scid_copy = scid.clone();
     let ws_tx_copy = ws_tx.clone();
     tokio::spawn(async move {
-        h.await.unwrap().unwrap();
+        // 原实现是 `h.await.unwrap().unwrap()`：join 失败或 adb 报错都会 panic 掉这个任务，
+        // 于是 remove_device / WS 通知都不执行，前端永远显示"已控制"。改为记录错误后照常清理。
+        match h.await {
+            Ok(Ok(())) => {
+                log::info!("[WebServe] scrcpy app exited");
+            }
+            Ok(Err(e)) => {
+                log::error!("[WebServe] scrcpy app failed: {}", e);
+            }
+            Err(e) => {
+                log::error!("[WebServe] failed to join scrcpy app task: {}", e);
+            }
+        }
         log::info!("[WebServe] {}", t!("web.device.removingDeviceAfterExit"));
         ControlledDevice::remove_device(&scid_copy).await;
         ws_tx_copy

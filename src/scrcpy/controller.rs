@@ -1,10 +1,10 @@
-use std::{collections::HashMap, net::SocketAddrV4, thread};
+use std::{collections::HashMap, net::SocketAddrV4, thread, time::Duration};
 
 use bevy::log;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use rust_i18n::t;
 use tokio::{
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::{
         broadcast,
         mpsc::{self, UnboundedReceiver},
@@ -38,6 +38,58 @@ pub enum ControllerCommand {
 }
 
 pub struct Controller;
+
+/// 等待设备端 scrcpy server 连回来的超时时间。
+///
+/// 取值来自 `LocalConfig::connect_timeout_secs`（默认 10 秒），夹到 1..=120 秒防止误配置。
+fn connect_accept_timeout() -> Duration {
+    let secs = LocalConfig::get().connect_timeout_secs.clamp(1, 120);
+    Duration::from_secs(secs)
+}
+
+/// accept 的收敛结果：超时与 accept 错误都收敛成 `Failed`，让调用方走同一段回滚。
+enum AcceptOutcome {
+    Accepted(TcpStream),
+    Failed(String),
+}
+
+/// 带超时的 accept。
+///
+/// 修复点：原实现直接 `listener.accept().await`。设备端因 jar 版本不符、`app_process`
+/// 崩溃、USB 抖动等原因没连回来时，整个 controller 主循环会永久停在这里，
+/// 之后所有连接/断开命令都在 channel 里排队，前端表现为"点了没反应、只能重启应用"。
+async fn accept_with_timeout(listener: &TcpListener) -> AcceptOutcome {
+    let timeout = connect_accept_timeout();
+    match tokio::time::timeout(timeout, listener.accept()).await {
+        Ok(Ok((socket, _))) => AcceptOutcome::Accepted(socket),
+        Ok(Err(e)) => AcceptOutcome::Failed(format!("accept error: {e}")),
+        Err(_elapsed) => AcceptOutcome::Failed(format!(
+            "accept timed out after {}s",
+            timeout.as_secs()
+        )),
+    }
+}
+
+/// 连接失败/超时的统一回滚：通知前端、清理受控记录、移除取消令牌。
+///
+/// `signal_map` 里的 token 是在 accept 之前插入的，这里必须成对移除，否则会泄漏。
+/// reverse 规则的清理在 P0-3 里接到这里。
+async fn rollback_pending_connection(
+    scid: &str,
+    socket_id: &str,
+    ws_tx: &broadcast::Sender<WebSocketNotification>,
+    signal_map: &mut HashMap<String, CancellationToken>,
+) {
+    ws_tx
+        .send(WebSocketNotification::ScrcpyDeviceConnection {
+            scid: scid.to_string(),
+            main: true,
+            connected: false,
+        })
+        .ok();
+    ControlledDevice::remove_device(scid).await;
+    signal_map.remove(socket_id);
+}
 
 impl Controller {
     pub fn start(
@@ -163,7 +215,10 @@ impl Controller {
                         let socket_id = "main_control".to_string();
 
                         if !ControlledDevice::is_scid_controlled(&scid).await {
-                            panic!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid)
+                            log::error!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid);
+                            rollback_pending_connection(&scid, &socket_id, &ws_tx, &mut signal_map)
+                                .await;
+                            continue;
                         }
 
                         let token = CancellationToken::new();
@@ -177,8 +232,8 @@ impl Controller {
                         let cs_rx = cs_tx.subscribe();
                         let cr_tx_copy = cr_tx.clone();
                         let m_tx_copy = m_tx.clone();
-                        match listener.accept().await {
-                            Ok((socket, _)) => {
+                        match accept_with_timeout(&listener).await {
+                            AcceptOutcome::Accepted(socket) => {
                                 let ws_tx_copy = ws_tx.clone();
                                 let scid_copy = scid.clone();
                                 ws_tx_copy
@@ -204,21 +259,20 @@ impl Controller {
                                         .ok();
                                 });
                             }
-                            Err(e) => {
+                            AcceptOutcome::Failed(err) => {
                                 log::error!(
-                                    "[Controller] {}: {}",
+                                    "[Controller] {}: {} ({})",
                                     t!("scrcpy.errorAcceptingConnection"),
-                                    e
+                                    err,
+                                    scid
                                 );
-                                ws_tx
-                                    .send(WebSocketNotification::ScrcpyDeviceConnection {
-                                        scid: scid.clone(),
-                                        main: true,
-                                        connected: false,
-                                    })
-                                    .ok();
-                                ControlledDevice::remove_device(&scid).await;
-                                signal_map.remove(&socket_id);
+                                rollback_pending_connection(
+                                    &scid,
+                                    &socket_id,
+                                    &ws_tx,
+                                    &mut signal_map,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -226,7 +280,10 @@ impl Controller {
                         let socket_id = "main_video".to_string();
 
                         if !ControlledDevice::is_scid_controlled(&scid).await {
-                            panic!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid)
+                            log::error!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid);
+                            rollback_pending_connection(&scid, &socket_id, &ws_tx, &mut signal_map)
+                                .await;
+                            continue;
                         }
 
                         let token = CancellationToken::new();
@@ -234,35 +291,50 @@ impl Controller {
 
                         log::info!("[Controller] {}: {}", t!("scrcpy.creatingMainVideo"), scid);
                         let v_tx_copy = v_tx.clone();
-                        match listener.accept().await {
-                            Ok((socket, _)) => {
-                                thread::spawn(move || {
-                                    tokio::runtime::Builder::new_current_thread()
-                                        .enable_all()
-                                        .build()
-                                        .unwrap()
-                                        .block_on(async move {
-                                            ScrcpyConnection::new(socket)
-                                                .handle_video(token, v_tx_copy, meta_flag, &scid)
-                                                .await;
+                        match accept_with_timeout(&listener).await {
+                            AcceptOutcome::Accepted(socket) => {
+                                match tokio::runtime::Builder::new_current_thread()
+                                    .enable_all()
+                                    .build()
+                                {
+                                    Ok(rt) => {
+                                        thread::spawn(move || {
+                                            rt.block_on(async move {
+                                                ScrcpyConnection::new(socket)
+                                                    .handle_video(token, v_tx_copy, meta_flag, &scid)
+                                                    .await;
+                                            });
                                         });
-                                });
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "[Controller] failed to build video runtime: {}",
+                                            e
+                                        );
+                                        rollback_pending_connection(
+                                            &scid,
+                                            &socket_id,
+                                            &ws_tx,
+                                            &mut signal_map,
+                                        )
+                                        .await;
+                                    }
+                                }
                             }
-                            Err(e) => {
+                            AcceptOutcome::Failed(err) => {
                                 log::error!(
-                                    "[Controller] {}: {}",
+                                    "[Controller] {}: {} ({})",
                                     t!("scrcpy.errorAcceptingConnection"),
-                                    e
+                                    err,
+                                    scid
                                 );
-                                ws_tx
-                                    .send(WebSocketNotification::ScrcpyDeviceConnection {
-                                        scid: scid.clone(),
-                                        main: true,
-                                        connected: false,
-                                    })
-                                    .ok();
-                                ControlledDevice::remove_device(&scid).await;
-                                signal_map.remove(&socket_id);
+                                rollback_pending_connection(
+                                    &scid,
+                                    &socket_id,
+                                    &ws_tx,
+                                    &mut signal_map,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -270,42 +342,60 @@ impl Controller {
                         let socket_id = "main_audio".to_string();
 
                         if !ControlledDevice::is_scid_controlled(&scid).await {
-                            panic!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid)
+                            log::error!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid);
+                            rollback_pending_connection(&scid, &socket_id, &ws_tx, &mut signal_map)
+                                .await;
+                            continue;
                         }
 
                         let token = CancellationToken::new();
                         signal_map.insert(socket_id.clone(), token.clone());
 
                         log::info!("[Controller] Creating main audio connection: {}", scid);
-                        match listener.accept().await {
-                            Ok((socket, _)) => {
-                                thread::spawn(move || {
-                                    tokio::runtime::Builder::new_current_thread()
-                                        .enable_all()
-                                        .build()
-                                        .unwrap()
-                                        .block_on(async move {
-                                            ScrcpyConnection::new(socket)
-                                                .handle_audio(token, meta_flag, &scid)
-                                                .await;
+                        match accept_with_timeout(&listener).await {
+                            AcceptOutcome::Accepted(socket) => {
+                                match tokio::runtime::Builder::new_current_thread()
+                                    .enable_all()
+                                    .build()
+                                {
+                                    Ok(rt) => {
+                                        thread::spawn(move || {
+                                            rt.block_on(async move {
+                                                ScrcpyConnection::new(socket)
+                                                    .handle_audio(token, meta_flag, &scid)
+                                                    .await;
+                                            });
                                         });
-                                });
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "[Controller] failed to build audio runtime: {}",
+                                            e
+                                        );
+                                        rollback_pending_connection(
+                                            &scid,
+                                            &socket_id,
+                                            &ws_tx,
+                                            &mut signal_map,
+                                        )
+                                        .await;
+                                    }
+                                }
                             }
-                            Err(e) => {
+                            AcceptOutcome::Failed(err) => {
                                 log::error!(
-                                    "[Controller] {}: {}",
+                                    "[Controller] {}: {} ({})",
                                     t!("scrcpy.errorAcceptingConnection"),
-                                    e
+                                    err,
+                                    scid
                                 );
-                                ws_tx
-                                    .send(WebSocketNotification::ScrcpyDeviceConnection {
-                                        scid: scid.clone(),
-                                        main: true,
-                                        connected: false,
-                                    })
-                                    .ok();
-                                ControlledDevice::remove_device(&scid).await;
-                                signal_map.remove(&socket_id);
+                                rollback_pending_connection(
+                                    &scid,
+                                    &socket_id,
+                                    &ws_tx,
+                                    &mut signal_map,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -313,7 +403,10 @@ impl Controller {
                         let socket_id = format!("sub_control_{}", scid);
 
                         if !ControlledDevice::is_scid_controlled(&scid).await {
-                            panic!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid)
+                            log::error!("{}: {}", t!("scrcpy.deviceNotRecorded"), scid);
+                            rollback_pending_connection(&scid, &socket_id, &ws_tx, &mut signal_map)
+                                .await;
+                            continue;
                         }
 
                         let token = CancellationToken::new();
@@ -323,8 +416,8 @@ impl Controller {
                         let sc_rx = cs_tx.subscribe();
                         let cr_tx_copy = cr_tx.clone();
                         let m_tx_copy = m_tx.clone();
-                        match listener.accept().await {
-                            Ok((socket, _)) => {
+                        match accept_with_timeout(&listener).await {
+                            AcceptOutcome::Accepted(socket) => {
                                 let ws_tx_copy = ws_tx.clone();
                                 let scid_copy = scid.clone();
                                 ws_tx_copy
@@ -349,21 +442,20 @@ impl Controller {
                                         .ok();
                                 });
                             }
-                            Err(e) => {
+                            AcceptOutcome::Failed(err) => {
                                 log::error!(
-                                    "[Controller] {}: {}",
+                                    "[Controller] {}: {} ({})",
                                     t!("scrcpy.errorAcceptingConnection"),
-                                    e
+                                    err,
+                                    scid
                                 );
-                                ws_tx
-                                    .send(WebSocketNotification::ScrcpyDeviceConnection {
-                                        scid: scid.clone(),
-                                        main: true,
-                                        connected: false,
-                                    })
-                                    .ok();
-                                ControlledDevice::remove_device(&scid).await;
-                                signal_map.remove(&socket_id);
+                                rollback_pending_connection(
+                                    &scid,
+                                    &socket_id,
+                                    &ws_tx,
+                                    &mut signal_map,
+                                )
+                                .await;
                             }
                         }
                     }
