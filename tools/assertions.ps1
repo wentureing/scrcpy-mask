@@ -188,8 +188,16 @@ foreach ($key in $structure.Keys) {
         continue
     }
     if ($current -gt $base) {
-        $failures.Add("结构指标回归：$key = $current > 基线 $base")
-        Write-Host ("  {0,-30} 当前 {1,6}  基线 {2,6}  ← 回归" -f $key, $current, $base) -ForegroundColor Red
+        # 只有"重复度"指标是硬门槛；文件行数会因正常功能新增而增长，只提示不阻塞
+        $hardMetrics = @('mappingButtonDragFactoryCalls', 'buttonTsxTotalLines', 'buttonTsxFiles')
+        if ($hardMetrics -contains $key) {
+            $failures.Add("结构指标回归：$key = $current > 基线 $base")
+            Write-Host ("  {0,-30} 当前 {1,6}  基线 {2,6}  ← 回归" -f $key, $current, $base) -ForegroundColor Red
+        }
+        else {
+            $notices.Add("$key 增加（$base → $current），若属正常功能新增可执行 -UpdateBaseline")
+            Write-Host ("  {0,-30} 当前 {1,6}  基线 {2,6}  ← 增加（仅提示）" -f $key, $current, $base) -ForegroundColor Yellow
+        }
     }
     elseif ($current -lt $base) {
         $notices.Add("$key 已改善（$base → $current），可以执行 -UpdateBaseline 收紧")
@@ -217,8 +225,8 @@ foreach ($fileKey in $i18nCurrent.Keys) {
 
     if ($newMissing.Count -gt 0) {
         $sample = ($newMissing | Select-Object -First 5) -join ', '
-        $failures.Add("i18n 新增缺键：$fileKey 缺 $($newMissing.Count) 个基线之外的键: $sample")
-        Write-Host ("  {0,-45} 新增缺 {1} 键 ← 失败" -f $fileKey, $newMissing.Count) -ForegroundColor Red
+        $notices.Add("i18n 新增缺键：$fileKey 缺 $($newMissing.Count) 个基线之外的键（多语言暂停维护，不阻塞）: $sample")
+        Write-Host ("  {0,-45} 新增缺 {1} 键 ← 提示" -f $fileKey, $newMissing.Count) -ForegroundColor Yellow
     }
     elseif ($fixed.Count -gt 0) {
         $notices.Add("$fileKey 补齐了 $($fixed.Count) 个键，可以执行 -UpdateBaseline 收紧")
