@@ -708,6 +708,26 @@ function Displayer({
     };
   }, [state.current.original_size.width, state.current.original_size.height]);
 
+  // 菜单项只在语言变化时重建，避免每次渲染都重建 13 个菜单对象
+  const newMappingMenuItems = useMemo(
+    () => menuItems.map(([key, tID]) => ({ key, label: t(tID) })),
+    [t],
+  );
+
+  // 左键单击与右键共用同一套坐标换算：单击出类型菜单，拖动则由按钮自身的拖拽逻辑接管
+  const recordNewMappingPosition = useCallback(
+    (e: React.MouseEvent) => {
+      contextMenuPosRef.current = clientPositionToMappingPosition(
+        e.clientX,
+        e.clientY,
+        maskArea,
+        originalSize.width,
+        originalSize.height,
+      );
+    },
+    [maskArea, originalSize],
+  );
+
   function updateMapping(
     index: number,
     updater: MappingType | ((prev: any) => any),
@@ -782,10 +802,7 @@ function Displayer({
         <DeviceBackground />
         <Dropdown
           menu={{
-            items: menuItems.map(([key, tID]) => ({
-              key,
-              label: t(tID),
-            })),
+            items: newMappingMenuItems,
             onClick({ key }) {
               let config: MappingType;
               if (key === "MouseCastSpell") {
@@ -805,18 +822,12 @@ function Displayer({
               setState(newState);
             },
           }}
-          trigger={["contextMenu"]}
+          // 左键单击即出菜单（原来只能右键），右键保留兼容
+          trigger={["click", "contextMenu"]}
         >
           <div
-            onContextMenu={(e) => {
-              contextMenuPosRef.current = clientPositionToMappingPosition(
-                e.clientX,
-                e.clientY,
-                maskArea,
-                originalSize.width,
-                originalSize.height,
-              );
-            }}
+            onClick={recordNewMappingPosition}
+            onContextMenu={recordNewMappingPosition}
             className="w-full h-full absolute bg-transparent"
           />
         </Dropdown>

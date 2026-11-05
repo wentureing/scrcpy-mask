@@ -2,7 +2,7 @@ use std::{
     fs::{File, create_dir_all},
     io::Write,
     net::Ipv4Addr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::RwLock,
 };
 
@@ -183,15 +183,35 @@ macro_rules! define_setter {
 }
 
 impl LocalConfig {
+    /// 选择可用的 adb：配置路径失效时自动回退到内置 adb，再回退到 PATH 中的 adb。
+    ///
+    /// 修复点：原实现只在 `adb_path == "adb"` 时替换。一旦某次运行把内置 adb 的**绝对路径**
+    /// 写进 config.json，之后移动/更新程序目录，该路径就永久失效（日志表现为
+    /// `error while starting adb server: 系统找不到指定的路径 (os error 3)`，设备列表为空）。
     pub fn prefer_bundled_adb() {
-        let path = bundled_adb_path();
-        if !path.is_file() {
+        let bundled = bundled_adb_path();
+        let mut config = CONFIG.write().unwrap();
+        let current = config.adb_path.clone();
+        let current_valid = !current.is_empty() && Path::new(&current).is_file();
+
+        if current_valid {
             return;
         }
 
-        let mut config = CONFIG.write().unwrap();
-        if config.adb_path == "adb" {
-            config.adb_path = path.to_string_lossy().into_owned();
+        if bundled.is_file() {
+            let bundled_str = bundled.to_string_lossy().into_owned();
+            log::warn!(
+                "[Config] configured adb path is invalid: {} -> bundled adb: {}",
+                if current.is_empty() { "<empty>" } else { current.as_str() },
+                bundled_str
+            );
+            config.adb_path = bundled_str;
+        } else if !current.is_empty() && current != "adb" {
+            log::warn!(
+                "[Config] configured adb path is invalid: {} -> adb (PATH)",
+                current
+            );
+            config.adb_path = "adb".to_string();
         }
     }
 

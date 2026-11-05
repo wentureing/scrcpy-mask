@@ -69,19 +69,25 @@ export function mappingButtonDragFactory(
   onMouseUp: ({ x, y }: { x: number; y: number }) => void,
   delay?: number,
 ) {
-  delay = delay ?? 500;
+  // delay > 0 时保留"长按才拖"的旧行为；默认 0 表示按下即按位移阈值判定，手感更跟手。
+  const longPressDelay = delay ?? 0;
+  const DRAG_THRESHOLD = 4;
+
   const handleDrag = (downEvent: React.MouseEvent) => {
     if (downEvent.button !== 0) return;
 
     const mappingContainer = document.getElementById("mappings-container") as HTMLElement;
-    const scrollX = mappingContainer.scrollLeft;
-    const scrollY = mappingContainer.scrollTop;
-    
+    const scrollX = mappingContainer?.scrollLeft ?? 0;
+    const scrollY = mappingContainer?.scrollTop ?? 0;
+
     const { width, height, left, top } = maskArea;
     const element = downEvent.currentTarget as HTMLElement;
 
+    const startX = downEvent.clientX;
+    const startY = downEvent.clientY;
     let dragStarted = false;
     let longPressTimer = 0;
+    let rafId = 0;
     let curMaskX = 0;
     let curMaskY = 0;
 
@@ -90,16 +96,37 @@ export function mappingButtonDragFactory(
       curMaskY = Math.max(0, Math.min(e.clientY + scrollY - top, height));
     };
 
+    // 用 rAF 合并同一帧内的多次 mousemove，避免高频写 style 造成掉帧
+    const scheduleMove = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        element.style.transform = `translate(${curMaskX}px, ${curMaskY}px)`;
+      });
+    };
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       updateCurMaskPos(moveEvent);
+      if (!dragStarted && longPressDelay <= 0) {
+        const dx = Math.abs(moveEvent.clientX - startX);
+        const dy = Math.abs(moveEvent.clientY - startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        dragStarted = true;
+        element.style.cursor = "grabbing";
+      }
       if (!dragStarted) return;
-      element.style.transform = `translate(${curMaskX}px, ${curMaskY}px)`;
+      scheduleMove();
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
       clearTimeout(longPressTimer);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      element.style.cursor = "";
       if (!dragStarted) return;
 
       updateCurMaskPos(upEvent);
@@ -113,11 +140,12 @@ export function mappingButtonDragFactory(
 
     updateCurMaskPos(downEvent);
     window.addEventListener("mousemove", handleMouseMove);
-
-    longPressTimer = setTimeout(() => {
-      dragStarted = true;
-      element.style.transform = `translate(${curMaskX}px, ${curMaskY}px)`;
-    }, delay);
+    if (longPressDelay > 0) {
+      longPressTimer = window.setTimeout(() => {
+        dragStarted = true;
+        element.style.transform = `translate(${curMaskX}px, ${curMaskY}px)`;
+      }, longPressDelay);
+    }
     window.addEventListener("mouseup", handleMouseUp);
   };
 
