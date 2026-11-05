@@ -27,6 +27,8 @@ env:
   RUST_BACKTRACE: '1'
   # sccache 与增量编译不兼容；同时减少 target 体积
   CARGO_INCREMENTAL: '0'
+  # 限制 sccache 的 GHA 缓存占用，避免挤掉 FFmpeg / Rust target 这些更值钱的缓存
+  SCCACHE_CACHE_SIZE: '2G'
   ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
 
 jobs:
