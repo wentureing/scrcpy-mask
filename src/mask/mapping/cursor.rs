@@ -10,6 +10,7 @@ use bevy::{
 };
 
 use crate::{
+    config::LocalConfig,
     mask::{
         mapping::{MappingState, mask_not_resizing, utils::ControlMsgHelper},
         mask_command::{MaskSize, TitlebarState},
@@ -898,7 +899,12 @@ fn handle_cursor_fps(
         return;
     }
 
-    let delta = accumulated_motion.delta * fps_config.sensitivity;
+    let mut raw_delta = accumulated_motion.delta;
+    if LocalConfig::mouse_horizontal_only() {
+        // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
+        raw_delta.y = 0.0;
+    }
+    let delta = raw_delta * fps_config.sensitivity;
 
     if let Some(deferred_delta) =
         cleanup_pending_fps_touch(&cs_tx_res.0, &mut fps_config, mask_size.0)

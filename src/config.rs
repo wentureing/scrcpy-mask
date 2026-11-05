@@ -126,6 +126,10 @@ pub struct LocalConfig {
     pub stay_awake: bool,
     pub screen_off_timeout: i32,
     pub power_off_on_close: bool,
+    // mouse behavior
+    /// 只把鼠标位移的横向分量传给设备（纵向位移丢弃）。
+    /// 取巧实现：不做"全向读取"，直接在消费点清零 y 分量。默认关闭，保持原有手感。
+    pub mouse_horizontal_only: bool,
 }
 
 impl Default for LocalConfig {
@@ -165,6 +169,7 @@ impl Default for LocalConfig {
             stay_awake: false,
             screen_off_timeout: -1, // default keep device setting
             power_off_on_close: false,
+            mouse_horizontal_only: false,
         }
     }
 }
@@ -253,6 +258,11 @@ impl LocalConfig {
 
     pub fn get_clipboard_sync() -> bool {
         CONFIG.read().unwrap().clipboard_sync
+    }
+
+    /// 只传输鼠标横向分量（纵向位移丢弃）。每帧读取，避免 clone 整个配置。
+    pub fn mouse_horizontal_only() -> bool {
+        CONFIG.read().unwrap().mouse_horizontal_only
     }
 
     define_setter!(

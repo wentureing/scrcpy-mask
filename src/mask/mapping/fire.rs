@@ -14,6 +14,7 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    config::LocalConfig,
     mask::{
         mapping::{
             MappingState,
@@ -526,7 +527,12 @@ pub fn handle_fire_trigger(
         // Some games follow the fire pointer while firing. Let an opted-in
         // fire mapping move that pointer with the FPS drag, while keeping the
         // historical fixed-pointer behavior as the default.
-        fire_item.current_pos += accumulated_motion.delta * fire_item.sensitivity;
+        let mut raw_delta = accumulated_motion.delta;
+        if LocalConfig::mouse_horizontal_only() {
+            // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
+            raw_delta.y = 0.0;
+        }
+        fire_item.current_pos += raw_delta * fire_item.sensitivity;
         ControlMsgHelper::send_touch(
             &cs_tx_res.0,
             MotionEventAction::Move,
