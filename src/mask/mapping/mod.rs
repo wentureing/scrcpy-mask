@@ -1,3 +1,4 @@
+pub mod behavior;
 pub mod binding;
 pub mod cast_spell;
 pub mod config;
@@ -6,6 +7,7 @@ pub mod direction_pad;
 pub mod executor;
 pub mod fire;
 pub mod observation;
+pub mod pipeline;
 pub mod raw_input;
 pub mod script;
 pub mod script_helper;

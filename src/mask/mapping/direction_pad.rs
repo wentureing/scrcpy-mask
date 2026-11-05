@@ -20,6 +20,7 @@ use crate::{
             MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
             run_script_hook,
         },
+        pipeline::{Intent, IntentSender},
         script::{BindMappingScriptHooks, MappingScriptHooks},
         script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
         utils::{
@@ -455,6 +456,8 @@ pub fn handle_direction_pad(
                 let mapping = mapping.as_ref_directionpad();
                 let key = action.to_string();
                 let original_size: Vec2 = active_mapping.original_size.into();
+                // 层④：本映射所有坐标都经指令发送器统一发出
+                let sender = IntentSender::new(cs_tx_res.0.clone(), original_size);
                 let mut state = scale_direction_2d_state(
                     ineffable.direction_2d(action.ineff_dual_axis()),
                     mapping,
@@ -484,13 +487,10 @@ pub fn handle_direction_pad(
                             } else {
                                 item.original_pos + state
                             };
-                            ControlMsgHelper::send_touch(
-                                &cs_tx_res.0,
-                                MotionEventAction::Move,
-                                mapping.pointer_id,
-                                original_size,
+                            sender.send(Intent::Move {
+                                pointer_id: mapping.pointer_id,
                                 pos,
-                            );
+                            });
                         }
                         continue;
                     }
@@ -522,13 +522,10 @@ pub fn handle_direction_pad(
                                     SingleSwipeStrategy::ArcWithEaseInOut,
                                 );
                             } else {
-                                ControlMsgHelper::send_touch(
-                                    &cs_tx_res.0,
-                                    MotionEventAction::Move,
-                                    mapping.pointer_id,
-                                    original_size,
-                                    original_pos + state,
-                                );
+                                sender.send(Intent::Move {
+                                    pointer_id: mapping.pointer_id,
+                                    pos: original_pos + state,
+                                });
                             }
                         } else {
                             // 所有方向键都松开了：先给 RELEASE_GRACE_MS 宽限期。
@@ -592,13 +589,10 @@ pub fn handle_direction_pad(
                         } else {
                             item.original_pos + state
                         };
-                        ControlMsgHelper::send_touch(
-                            &cs_tx_res.0,
-                            MotionEventAction::Move,
-                            mapping.pointer_id,
-                            original_size,
+                        sender.send(Intent::Move {
+                            pointer_id: mapping.pointer_id,
                             pos,
-                        );
+                        });
                     } else if item.enable_randomization && Instant::now() > item.next_jitter_at {
                         handle_direction_jitter_path(
                             item.last_state_actual,
