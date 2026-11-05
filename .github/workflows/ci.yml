@@ -138,10 +138,12 @@ jobs:
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
-  # 按需出包：仅手动触发且勾选 package 时运行
+  # 按需出包：
+  #   1) Actions 页面手动 Run 并勾选 package；
+  #   2) 或者 commit message 里带 [package]（这样"明确要求出包"时无需 token 也能直接跑）。
   package:
     needs: [gate, check]
-    if: ${{ needs.gate.outputs.proceed == 'true' && github.event_name == 'workflow_dispatch' && inputs.package }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))) }}
     runs-on: windows-latest
     timeout-minutes: 240
     steps:
