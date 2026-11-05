@@ -120,8 +120,9 @@ function Test-I18nGroup {
     }
 }
 
-Test-I18nGroup -GroupName 'frontend' -Directory $FrontendI18n -Pattern 'translation.json' -Reference 'zh-CN/translation.json'
-Test-I18nGroup -GroupName 'backend' -Directory $BackendLocales -Pattern '*.json' -Reference 'zh-CN.json'
+# 国际化检查已按用户要求关闭（只维护中文，不做 i18n 校验）。
+# Test-I18nGroup -GroupName 'frontend' -Directory $FrontendI18n -Pattern 'translation.json' -Reference 'zh-CN/translation.json'
+# Test-I18nGroup -GroupName 'backend' -Directory $BackendLocales -Pattern '*.json' -Reference 'zh-CN.json'
 
 # ---------- 结构指标 ----------
 
