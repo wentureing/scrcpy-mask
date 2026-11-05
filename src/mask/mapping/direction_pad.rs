@@ -2,10 +2,14 @@ use std::{
     collections::HashMap,
     sync::Arc,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::tokio_tasks::TokioTasksRuntime;
+
+/// 所有方向键松开后的抬指宽限期（ms）。
+/// 期间重新按下方向键会复用同一触点直接 Move，避免 W→A 被拆成"抬指 → 重按 → 初始滑动"。
+const RELEASE_GRACE_MS: u64 = 40;
 use crate::{
     mask::mapping::{
         MappingState,
@@ -235,6 +239,8 @@ pub struct DirectionPadItem {
     pub enable_randomization: bool,
     pub jitter_offset: Vec2,
     pub move_gen: Arc<AtomicU64>,
+    /// 所有方向键松开后的抬指宽限截止时间：期间重新按下方向键则直接复用同一触点，不抬指重按。
+    pub release_at: Option<Instant>,
 }
 
 fn scale_direction_2d_state(d_state: Vec2, mapping: &BindMappingDirectionPad) -> Vec2 {
@@ -307,6 +313,7 @@ fn apply_direction_pad_down(
 ) {
     let pointer_id = mapping.pointer_id;
     let original_pos: Vec2 = mapping.position.into();
+    let move_gen = Arc::new(AtomicU64::new(0));
 
     let random_offset = Vec2::new(mapping.random_offset_x, mapping.random_offset_y);
     let jitter_offset = Vec2::new(mapping.jitter_offset_x, mapping.jitter_offset_y);
@@ -345,6 +352,7 @@ fn apply_direction_pad_down(
         mapping.initial_duration,
         DEFAULT_SWIPE_DURATION,
         strategy,
+        move_gen.clone(),
     );
 
     direction_pad_map.0.insert(
@@ -361,7 +369,8 @@ fn apply_direction_pad_down(
             current_jitter: Vec2::ZERO,
             enable_randomization: mapping.enable_randomization,
             jitter_offset,
-            move_gen: Arc::new(AtomicU64::new(0)),
+            move_gen,
+            release_at: None,
         },
     );
 }
@@ -460,6 +469,29 @@ pub fn handle_direction_pad(
                 if direction_pad_map.0.contains_key(&key) {
                     let item = direction_pad_map.0.get_mut(&key).unwrap();
                     if !item.initial_swipe_done.load(Ordering::Relaxed) {
+                        // 输入优先：初始缓动还没跑完就来了新方向，立刻取消动画并按最新方向直达，
+                        // 避免"W→A 必须等初始滑动结束才响应"。
+                        if state.x != 0.0 || state.y != 0.0 {
+                            item.move_gen.fetch_add(1, Ordering::SeqCst);
+                            item.initial_swipe_done.store(true, Ordering::Relaxed);
+                            item.release_at = None;
+                            item.last_state = state;
+                            let actual_state = randomize_direction_pad_state(state, mapping);
+                            item.last_state_actual = actual_state;
+                            item.next_jitter_at = next_jitter_deadline();
+                            let pos = if item.enable_randomization {
+                                item.random_anchor + actual_state + item.current_jitter
+                            } else {
+                                item.original_pos + state
+                            };
+                            ControlMsgHelper::send_touch(
+                                &cs_tx_res.0,
+                                MotionEventAction::Move,
+                                mapping.pointer_id,
+                                original_size,
+                                pos,
+                            );
+                        }
                         continue;
                     }
                     let original_pos: Vec2 = mapping.position.into();
@@ -469,6 +501,7 @@ pub fn handle_direction_pad(
                             .is_any_direction_active(&key_input, &mouse_input)
                         {
                             // Opposite directions canceled — move back to center, don't lift.
+                            item.release_at = None;
                             let old_state = item.last_state_actual;
                             let actual_state = randomize_direction_pad_state(state, mapping);
                             item.last_state = state;
@@ -498,6 +531,21 @@ pub fn handle_direction_pad(
                                 );
                             }
                         } else {
+                            // 所有方向键都松开了：先给 RELEASE_GRACE_MS 宽限期。
+                            // 期间重新按方向键会复用同一触点直接 Move，避免"抬指 + 重按 + 初始滑动"。
+                            let now = Instant::now();
+                            let should_release = match item.release_at {
+                                Some(at) => now >= at,
+                                None => {
+                                    item.release_at =
+                                        Some(now + Duration::from_millis(RELEASE_GRACE_MS));
+                                    false
+                                }
+                            };
+                            if !should_release {
+                                continue;
+                            }
+                            item.release_at = None;
                             // Genuine release: all keys up.
                             let released =
                                 apply_direction_pad_up(&cs_tx_res, &mut direction_pad_map, &key);
@@ -531,34 +579,26 @@ pub fn handle_direction_pad(
                             }
                         }
                     } else if state != item.last_state {
-                        let old_state = item.last_state_actual;
+                        // 方向变化：直接跳到最新方向，不做中间插值，保证 W→A / W+A 立即生效。
+                        // 人类化仍由初始缓动、随机锚点与后续 jitter 提供。
+                        item.release_at = None;
+                        item.move_gen.fetch_add(1, Ordering::SeqCst);
                         let actual_state = randomize_direction_pad_state(state, mapping);
                         item.last_state = state;
                         item.last_state_actual = actual_state;
-
-                        if item.enable_randomization {
-                            handle_direction_move_randomized(
-                                old_state,
-                                actual_state,
-                                item.random_anchor,
-                                &mut item.current_jitter,
-                                &mut item.next_jitter_at,
-                                &item.move_gen,
-                                mapping.pointer_id,
-                                original_size,
-                                &cs_tx_res.0,
-                                &runtime,
-                                SingleSwipeStrategy::ArcWithEaseInOut,
-                            );
+                        item.next_jitter_at = next_jitter_deadline();
+                        let pos = if item.enable_randomization {
+                            item.random_anchor + actual_state + item.current_jitter
                         } else {
-                            ControlMsgHelper::send_touch(
-                                &cs_tx_res.0,
-                                MotionEventAction::Move,
-                                mapping.pointer_id,
-                                original_size,
-                                original_pos + state,
-                            );
-                        }
+                            item.original_pos + state
+                        };
+                        ControlMsgHelper::send_touch(
+                            &cs_tx_res.0,
+                            MotionEventAction::Move,
+                            mapping.pointer_id,
+                            original_size,
+                            pos,
+                        );
                     } else if item.enable_randomization && Instant::now() > item.next_jitter_at {
                         handle_direction_jitter_path(
                             item.last_state_actual,

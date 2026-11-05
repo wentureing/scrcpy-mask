@@ -225,16 +225,27 @@ pub fn spawn_initial_swipe(
     initial_duration_ms: u64,
     swipe_duration_ms: u64,
     swipe_strategy: SingleSwipeStrategy,
+    // 输入抢占：方向一变，主循环就递增该 generation，动画发现过期立即退出并把 done 置位，
+    // 保证"最新输入优先"，不会让初始缓动阻塞后续操作。
+    move_gen: Arc<AtomicU64>,
 ) -> Arc<AtomicBool> {
     let done = Arc::new(AtomicBool::new(false));
     let done_clone = done.clone();
     let cs_tx = cs_tx.clone();
+    let expected_gen = move_gen.load(Ordering::SeqCst);
+    let move_gen_task = move_gen.clone();
 
     runtime.spawn_background_task(move |_ctx| async move {
+        let superseded = || move_gen_task.load(Ordering::Relaxed) != expected_gen;
+
         if initial_duration_ms > 0 {
             let jitter_count = ((initial_duration_ms as f32 / 16.0).round() as usize).max(2);
             let jitter_interval = initial_duration_ms / jitter_count as u64;
             for _ in 0..jitter_count {
+                if superseded() {
+                    done_clone.store(true, Ordering::Relaxed);
+                    return;
+                }
                 let offset = Vec2::new(
                     (rand::random::<f32>() - 0.5) * 4.0,
                     (rand::random::<f32>() - 0.5) * 4.0,
@@ -265,6 +276,10 @@ pub fn spawn_initial_swipe(
             swipe_duration_ms,
         );
         for point in points {
+            if superseded() {
+                done_clone.store(true, Ordering::Relaxed);
+                return;
+            }
             ControlMsgHelper::send_touch(
                 &cs_tx,
                 MotionEventAction::Move,

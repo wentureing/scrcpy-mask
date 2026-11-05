@@ -574,6 +574,8 @@ fn start_mouse_cast_after_before(
         mapping.initial_duration,
         DEFAULT_SWIPE_DURATION,
         initial_swipe_strategy,
+        // 施法流程不做输入抢占，给一个独立的 generation 即保持原行为
+        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
     );
 
     if matches!(release_mode, MouseCastReleaseMode::OnPress) {
@@ -1190,6 +1192,8 @@ fn start_pad_cast_after_before(
         0,
         DEFAULT_SWIPE_DURATION,
         strategy,
+        // 施法流程不做输入抢占，给一个独立的 generation 即保持原行为
+        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
     );
 
     active_cast.0 = Some(ActiveCastSpellItem::new_pad_item(
