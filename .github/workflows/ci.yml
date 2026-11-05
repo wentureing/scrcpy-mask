@@ -6,6 +6,12 @@ on:
       - 'custom/**'
   pull_request:
   workflow_dispatch:
+    inputs:
+      package:
+        description: '同时构建并保存 Windows 产物（zip）'
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,13 +20,24 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  ANDROID_PLATFORM_TOOLS_VERSION: '37.0.0'
+
 jobs:
-  windows:
+  # 快速校验：lint / 类型 / 结构断言 / 单测 / cargo check
+  check:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
       - name: Checkout codes
         uses: actions/checkout@v4
+
+      # 纯文本断言，秒级，放最前以便快速失败（不必等 FFmpeg 构建）
+      - name: Structural assertions (i18n / ratchet)
+        shell: pwsh
+        run: ./tools/assertions.ps1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -54,6 +71,79 @@ jobs:
         with:
           update: true
           msystem: MINGW64
+          cache: true
+          install: >-
+            make
+            diffutils
+            gawk
+            yasm
+            pkg-config
+          path-type: inherit
+
+      # 与 release.yml 共用同一 key，两个 workflow 可互相命中
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-v0.6
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: ./scripts/build-ffmpeg.sh
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-x64
+
+      - name: Cargo test (library unit tests)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo test --lib --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Cargo check
+        shell: pwsh
+        run: ./scripts/check-windows.ps1
+
+  # 打包并保存产物：push 到 custom/** 或手动触发；PR 不打包
+  package:
+    needs: check
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.package) }}
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout codes
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Set up msvc
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up msys
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: MINGW64
+          cache: true
           install: >-
             make
             diffutils
@@ -74,11 +164,58 @@ jobs:
         shell: msys2 {0}
         run: ./scripts/build-ffmpeg.sh
 
+      # 内置 adb 来源；下载一次后缓存，避免每次重复拉 10+MB
+      - name: Cache Android platform tools
+        id: android-platform-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: android-platform-tools/windows/platform-tools
+          key: android-platform-tools-windows-x64-${{ env.ANDROID_PLATFORM_TOOLS_VERSION }}
+
+      - name: Install Android platform tools
+        if: steps.android-platform-tools-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path android-platform-tools/windows | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" `
+            -OutFile "$env:RUNNER_TEMP\platform-tools.zip"
+          Expand-Archive "$env:RUNNER_TEMP\platform-tools.zip" -DestinationPath android-platform-tools/windows -Force
+
+      - name: Add Android platform tools to PATH
+        shell: pwsh
+        run: |
+          "$env:GITHUB_WORKSPACE\android-platform-tools\windows\platform-tools" |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: windows-x64-ci
+          key: windows-x64
 
-      - name: Cargo check
+      - name: Build package
         shell: pwsh
-        run: ./scripts/check-windows.ps1
+        run: ./scripts/package-windows.ps1
+
+      - name: Show artifact size
+        shell: pwsh
+        run: |
+          $zip = "target/release/scrcpy-mask-windows-x64.zip"
+          if (-not (Test-Path $zip)) { throw "打包产物不存在: $zip" }
+          $size = (Get-Item $zip).Length / 1MB
+          "产物: $zip ({0:n1} MB)" -f $size
+          @"
+          ### 打包产物
+          - 文件: ``scrcpy-mask-windows-x64.zip``
+          - 大小: $([math]::Round($size,1)) MB
+          - 提交: ``${{ github.sha }}``
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-mask-windows-x64-${{ github.sha }}
+          path: target/release/scrcpy-mask-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
