@@ -1,12 +1,9 @@
 name: CI
 
-# 缩减版：日常 push 只做"能否明显发现错误"的校验（断言 / lint / 类型 / cargo check）。
-# 产物构建改为按需（workflow_dispatch 且勾选 package），不再占用每次 push。
+# 手动触发版：默认只做"能否明显发现错误"的校验（断言 / lint / 类型 / cargo check）。
+# 产物构建为可选项（勾选 package），不占用默认流程。
+# 不随 push / PR 自动触发，需在 Actions 页面点 Run workflow。
 on:
-  push:
-    branches:
-      - 'custom/**'
-  pull_request:
   workflow_dispatch:
     inputs:
       package:
