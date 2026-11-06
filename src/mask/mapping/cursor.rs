@@ -14,7 +14,8 @@ use crate::{
     input_effects::InputEffects,
     mask::{
         mapping::{
-            MappingState, mask_not_resizing, utils::ControlMsgHelper, view_motion::ViewMotion,
+            MappingState, free_look::FreeLookState, mask_not_resizing, utils::ControlMsgHelper,
+            view_motion::ViewMotion,
         },
         mask_command::{MaskSize, TitlebarState},
         ui::basic::{MaskContentEntity, TITLEBAR_HEIGHT},
@@ -957,12 +958,18 @@ fn handle_cursor_fps(
 }
 
 fn handle_normal_left_click(
+    free_look: Res<FreeLookState>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     cursor_pos: Res<CursorPosition>,
     cs_tx_res: Res<ChannelSenderCS>,
     mask_size: Res<MaskSize>,
     titlebar_state: Res<TitlebarState>,
 ) {
+    // 锁光标期间（free look 激活）不把鼠标点击当作屏幕触控，避免边转视角边误点 UI（D9）。
+    // 映射按键不受影响：键盘/鼠标上的映射照常生效。
+    if free_look.is_active() {
+        return;
+    }
     if titlebar_state.visible && cursor_pos.0.y < 0. && cursor_pos.0.y >= -TITLEBAR_HEIGHT {
         return;
     }

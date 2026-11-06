@@ -72,6 +72,10 @@ fn default_web_bind_addr() -> Ipv4Addr {
     Ipv4Addr::new(127, 0, 0, 1)
 }
 
+fn default_free_look_exit_key() -> String {
+    "ControlLeft".to_string()
+}
+
 fn bundled_adb_path() -> PathBuf {
     let adb_name = if cfg!(target_os = "windows") {
         "adb.exe"
@@ -154,6 +158,10 @@ pub struct LocalConfig {
     /// 与按钮级 `effects` 是同一套结构，只是这里挂在全局配置上。
     #[serde(default)]
     pub free_look_effects: InputEffects,
+    /// free look 的退出键（Bevy `KeyCode` 名称，默认 `ControlLeft`）。
+    /// 第一次按下进入（锁光标），再次按下退出（不锁光标）；冲突时后端拒绝保存（D10）。
+    #[serde(default = "default_free_look_exit_key")]
+    pub free_look_exit_key: String,
 }
 
 impl Default for LocalConfig {
@@ -197,6 +205,7 @@ impl Default for LocalConfig {
             mouse_horizontal_only: false,
             free_look_enabled: false,
             free_look_effects: InputEffects::default(),
+            free_look_exit_key: default_free_look_exit_key(),
         }
     }
 }
@@ -372,5 +381,6 @@ impl LocalConfig {
         (screen_off_timeout, i32),
         (power_off_on_close, bool),
         (free_look_enabled, bool),
+        (free_look_exit_key, String),
     );
 }

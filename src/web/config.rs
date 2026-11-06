@@ -18,6 +18,7 @@ use crate::{
     },
     utils::{
         IDENTIFIER, check_for_update, get_mask_scale_factor, mask_win_move_helper,
+        relate_to_data_path,
         share::{ControlledDevice, PortNotice, UpdateInfo},
     },
     web::{JsonResponse, WebServerError},
@@ -780,10 +781,62 @@ async fn update_config(
             }
             return Err(WebServerError::bad_request("free_look_invert_y must be bool"));
         }
+        "free_look_exit_key" => {
+            if let Some(value) = payload.value.as_str() {
+                let key = value.trim().to_string();
+                if key.is_empty() {
+                    return Err(WebServerError::bad_request("free_look_exit_key 不能为空"));
+                }
+                // D10：退出键与已有映射冲突时提示更换，并且该设置不生效（不落盘）。
+                if free_look_exit_key_conflicts(&key) {
+                    return Err(WebServerError::bad_request(format!(
+                        "按键 {} 已被当前映射使用，请更换退出键",
+                        key
+                    )));
+                }
+                LocalConfig::set_free_look_exit_key(key.clone());
+                return Ok(JsonResponse::success(format!("退出键已设为 {}", key), None));
+            }
+            return Err(WebServerError::bad_request(
+                "free_look_exit_key must be string",
+            ));
+        }
         _ => Err(WebServerError::bad_request(format!(
             "{}: {}",
             t!("web.config.invalidMappingKey"),
             payload.key
         ))),
+    }
+}
+
+/// 检查退出键是否已被当前生效映射占用（D10：冲突则提示更换且不生效）。
+///
+/// 用 JSON 值递归查找字符串相等，避免为 13 类映射各写一遍解析逻辑；
+/// 映射文件不存在 / 解析失败时按"不冲突"处理（不阻塞用户改键）。
+fn free_look_exit_key_conflicts(key: &str) -> bool {
+    let file = LocalConfig::get().active_mapping_file;
+    if file.is_empty() {
+        return false;
+    }
+    let path = relate_to_data_path(["mapping", &file]);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    json_contains_string(&value, key)
+}
+
+fn json_contains_string(value: &serde_json::Value, needle: &str) -> bool {
+    match value {
+        serde_json::Value::String(s) => s == needle,
+        serde_json::Value::Array(items) => items
+            .iter()
+            .any(|item| json_contains_string(item, needle)),
+        serde_json::Value::Object(map) => {
+            map.values().any(|item| json_contains_string(item, needle))
+        }
+        _ => false,
     }
 }

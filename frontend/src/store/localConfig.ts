@@ -69,6 +69,8 @@ export interface LocalConfigState {
     scale_x: number;
     scale_y?: number;
   };
+  /** free look 退出键（Bevy KeyCode 名称，默认 ControlLeft）。 */
+  freeLookExitKey: string;
   // language
   language: string;
   // clipboard sync
@@ -113,6 +115,7 @@ const initialState: LocalConfigState = {
   mappingLabelOpacity: 0,
   freeLookEnabled: false,
   freeLookEffects: { invert_x: false, invert_y: false, scale_x: 1, scale_y: 1 },
+  freeLookExitKey: "ControlLeft",
   language: "en-US",
   clipboardSync: true,
   touchBackend: "sdk",

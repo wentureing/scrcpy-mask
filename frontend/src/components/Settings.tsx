@@ -99,6 +99,22 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
+  // free look 退出键候选（后端 exit_keycode 只识别这些名称，见 free_look.rs）
+  const freeLookExitKeyOptions = [
+    { value: "ControlLeft", label: t("settings.freeLookExitCtrlLeft") },
+    { value: "ControlRight", label: t("settings.freeLookExitCtrlRight") },
+    { value: "ShiftLeft", label: t("settings.freeLookExitShiftLeft") },
+    { value: "AltLeft", label: t("settings.freeLookExitAltLeft") },
+    { value: "Space", label: t("settings.freeLookExitSpace") },
+    { value: "Tab", label: t("settings.freeLookExitTab") },
+    { value: "Escape", label: t("settings.freeLookExitEscape") },
+    { value: "KeyC", label: "C" },
+    { value: "KeyF", label: "F" },
+    { value: "KeyG", label: "G" },
+    { value: "KeyV", label: "V" },
+    { value: "Backquote", label: "`" },
+  ];
+
   // 端口被占用时后端会静默顺延到下一个端口，这里把那条提示显示出来（读后即清空）。
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +148,21 @@ export default function Settings() {
       messageApi?.error(String(err));
     } finally {
       setTouchSaving(false);
+    }
+  }
+
+  // 退出键冲突时后端会拒绝保存（D10），所以这里不走乐观更新：
+  // 先请求，成功后再回填 store，失败则保留旧值并提示。
+  async function changeFreeLookExitKey(value: string) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "free_look_exit_key",
+        value,
+      });
+      dispatch(forceSetLocalConfig({ free_look_exit_key: value }));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
     }
   }
 
@@ -291,6 +322,17 @@ export default function Settings() {
               checked={!!localConfig.freeLookEffects?.invert_y}
               disabled={!localConfig.freeLookEnabled}
               onChange={(v) => dispatch(setFreeLookInvertY(v))}
+            />
+          </ItemBox>
+          <ItemBox
+            label={t("settings.freeLookExitKey")}
+            tooltip={t("settings.freeLookExitKeyTip")}
+          >
+            <Select
+              className="w-sm"
+              value={localConfig.freeLookExitKey ?? "ControlLeft"}
+              options={freeLookExitKeyOptions}
+              onChange={changeFreeLookExitKey}
             />
           </ItemBox>
           <ItemBox label={t("settings.horizontalMaskWidth")}>
