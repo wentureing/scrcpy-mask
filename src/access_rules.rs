@@ -15,6 +15,8 @@ pub const STATE_RAW_INPUT: &str = "raw_input";
 pub const STATE_FPS: &str = "fps";
 pub const STATE_OBSERVATION: &str = "observation";
 pub const STATE_FREE_LOOK_ACTIVE: &str = "free_look_active";
+/// 自由视角**未激活**（与 `normal` 解耦：观察/FPS/RawInput 下也可能成立）。
+pub const STATE_FREE_LOOK_INACTIVE: &str = "free_look_inactive";
 pub const STATE_NORMAL: &str = "normal";
 
 fn default_true() -> bool {
@@ -35,14 +37,17 @@ pub struct AccessRule {
 
 /// 把配置里的状态字符串归一化。
 ///
-/// `free_look_inactive` 是 `normal` 的别名（用户用它表达"未激活"）。
+/// `free_look_inactive` 与 `normal` **不再是别名**：
+/// - `free_look_inactive`：只看自由视角是否激活（观察/FPS/RawInput 下也可能命中）；
+/// - `normal`：所有状态都不成立时的兜底。
 pub fn normalize_state(state: &str) -> Option<&'static str> {
     match state {
         STATE_RAW_INPUT => Some(STATE_RAW_INPUT),
         STATE_FPS => Some(STATE_FPS),
         STATE_OBSERVATION => Some(STATE_OBSERVATION),
         STATE_FREE_LOOK_ACTIVE => Some(STATE_FREE_LOOK_ACTIVE),
-        "normal" | "free_look_inactive" => Some(STATE_NORMAL),
+        STATE_FREE_LOOK_INACTIVE => Some(STATE_FREE_LOOK_INACTIVE),
+        STATE_NORMAL => Some(STATE_NORMAL),
         _ => None,
     }
 }
@@ -75,11 +80,22 @@ impl CompiledAccessRules {
     }
 
     /// 判定某映射在某状态下是否允许触发。默认允许。
-    pub fn allowed(&self, mapping_id: &str, state: &str) -> bool {
+    ///
+    /// `free_look_active` 由调用方传入；`free_look_inactive` 规则只在未激活时参与判定，
+    /// 因此它在观察/FPS/RawInput 下也成立，不再等价于 `normal`。
+    pub fn allowed(&self, mapping_id: &str, state: &str, free_look_active: bool) -> bool {
         let Some(state) = normalize_state(state) else {
             // 调用方传入未知状态时按"默认允许"处理，不 panic。
             return true;
         };
+        let mut allow = self.state_rule(mapping_id, state);
+        if !free_look_active {
+            allow = allow && self.state_rule(mapping_id, STATE_FREE_LOOK_INACTIVE);
+        }
+        allow
+    }
+
+    fn state_rule(&self, mapping_id: &str, state: &'static str) -> bool {
         self.rules
             .get(mapping_id)
             .and_then(|states| states.get(state))
@@ -108,8 +124,8 @@ mod tests {
     fn empty_rules_allow_everything() {
         let rules = CompiledAccessRules::compile(&[]);
         assert!(rules.is_empty());
-        assert!(rules.allowed("Fire-0", STATE_FREE_LOOK_ACTIVE));
-        assert!(rules.allowed("Fire-0", STATE_NORMAL));
+        assert!(rules.allowed("Fire-0", STATE_FREE_LOOK_ACTIVE, true));
+        assert!(rules.allowed("Fire-0", STATE_NORMAL, false));
     }
 
     #[test]
@@ -119,10 +135,10 @@ mod tests {
             STATE_FREE_LOOK_ACTIVE,
             false,
         )]);
-        assert!(!rules.allowed("Fire-0", STATE_FREE_LOOK_ACTIVE));
+        assert!(!rules.allowed("Fire-0", STATE_FREE_LOOK_ACTIVE, true));
         // 其它状态/其它映射不受影响
-        assert!(rules.allowed("Fire-0", STATE_NORMAL));
-        assert!(rules.allowed("Fire-1", STATE_FREE_LOOK_ACTIVE));
+        assert!(rules.allowed("Fire-0", STATE_NORMAL, false));
+        assert!(rules.allowed("Fire-1", STATE_FREE_LOOK_ACTIVE, true));
     }
 
     #[test]
@@ -131,17 +147,27 @@ mod tests {
             rule("Fire-0", STATE_NORMAL, true),
             rule("Fire-0", STATE_NORMAL, false),
         ]);
-        assert!(!rules.allowed("Fire-0", STATE_NORMAL));
+        assert!(!rules.allowed("Fire-0", STATE_NORMAL, false));
     }
 
     #[test]
-    fn free_look_inactive_is_alias_of_normal() {
+    fn free_look_inactive_is_independent_of_normal() {
+        // 只配 free_look_inactive：未激活时命中，激活时不命中
         let rules = CompiledAccessRules::compile(&[rule(
             "Fire-0",
-            STATE_NORMAL,
+            STATE_FREE_LOOK_INACTIVE,
             false,
         )]);
-        assert!(!rules.allowed("Fire-0", "free_look_inactive"));
+        assert!(!rules.allowed("Fire-0", STATE_NORMAL, false));
+        assert!(!rules.allowed("Fire-0", STATE_FPS, false));
+        assert!(!rules.allowed("Fire-0", STATE_OBSERVATION, false));
+        assert!(rules.allowed("Fire-0", STATE_FREE_LOOK_ACTIVE, true));
+
+        // 只配 normal：只在完全普通时命中，FPS 下不命中
+        let normal_only =
+            CompiledAccessRules::compile(&[rule("Fire-0", STATE_NORMAL, false)]);
+        assert!(!normal_only.allowed("Fire-0", STATE_NORMAL, false));
+        assert!(normal_only.allowed("Fire-0", STATE_FPS, false));
     }
 
     #[test]
@@ -149,12 +175,12 @@ mod tests {
         let rules = CompiledAccessRules::compile(&[rule("Fire-0", "some_future_state", false)]);
         // 未知状态被忽略 → 规则表为空 → 默认允许
         assert!(rules.is_empty());
-        assert!(rules.allowed("Fire-0", STATE_NORMAL));
+        assert!(rules.allowed("Fire-0", STATE_NORMAL, false));
     }
 
     #[test]
     fn allowed_defaults_to_true_for_unknown_mapping() {
         let rules = CompiledAccessRules::compile(&[rule("Fire-0", STATE_NORMAL, false)]);
-        assert!(rules.allowed("Unknown-1", STATE_NORMAL));
+        assert!(rules.allowed("Unknown-1", STATE_NORMAL, false));
     }
 }

@@ -299,3 +299,54 @@ export function mappingModalDragFactory(delay?: number) {
   };
   return handleDrag;
 }
+
+/** 把映射的 bind 字段转成可读文本（数组或方向绑定都支持）。 */
+export function formatMappingBind(bind: unknown): string {
+  if (Array.isArray(bind)) {
+    return bind
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => formatBindingName(item))
+      .join(" + ");
+  }
+  if (bind && typeof bind === "object") {
+    const value = bind as Record<string, unknown>;
+    if (value.type === "Button") {
+      const directions = ["up", "down", "left", "right"]
+        .map((key) => {
+          const items = value[key];
+          return Array.isArray(items)
+            ? items
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => formatBindingName(item))
+                .join(" + ")
+            : "";
+        })
+        .filter(Boolean);
+      return directions.join(" / ");
+    }
+    if (value.type === "JoyStick") {
+      return "摇杆";
+    }
+  }
+  return "";
+}
+
+/**
+ * 访问规则下拉用的可读标签：`类型 · 绑定键 · id`。
+ *
+ * 只用真实 `mapping.id` 作为选项值（不能用数组索引或 pointer_id，否则规则永远不命中）。
+ */
+export function formatMappingLabel(mapping: {
+  id?: string;
+  type?: string;
+  note?: string;
+  bind?: unknown;
+}): string {
+  const parts = [
+    mapping.type ? formatMappingType(mapping.type) : "",
+    formatMappingBind(mapping.bind),
+    mapping.note ?? "",
+    mapping.id ?? "",
+  ].filter((part) => part.length > 0);
+  return parts.join(" · ");
+}

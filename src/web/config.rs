@@ -36,6 +36,7 @@ pub fn routers(
         .route("/get_config", get(get_config))
         .route("/update_config", post(update_config))
         .route("/port_notice", get(get_port_notice))
+        .route("/access_state", get(get_access_state))
         .route("/open_data_path", get(open_data_path))
         .route("/get_update_info", get(get_update_info))
         .route("/check_update", get(check_update))
@@ -47,6 +48,18 @@ async fn get_port_notice() -> Result<JsonResponse, WebServerError> {
     Ok(JsonResponse::success(
         "port notice".to_string(),
         Some(serde_json::json!({ "notice": PortNotice::take() })),
+    ))
+}
+
+/// 访问规则诊断：当前状态 + 自由视角是否激活（规则命中判断依赖这两项）。
+async fn get_access_state() -> Result<JsonResponse, WebServerError> {
+    use crate::mask::mapping::{free_look, mapping_trigger};
+    Ok(JsonResponse::success(
+        "access state".to_string(),
+        Some(serde_json::json!({
+            "state": mapping_trigger::current_access_state(),
+            "free_look_active": free_look::is_active_global(),
+        })),
     ))
 }
 

@@ -59,6 +59,7 @@ import {
   setUpdateInfo,
 } from "../store/other";
 import { requestGet, requestPost } from "../utils";
+import { formatMappingLabel } from "./mappings/tools";
 import { useEffect, useState, type ComponentProps } from "react";
 import i18n, { languageOptions } from "../i18n";
 import { useMessageContext } from "../hooks";
@@ -217,26 +218,40 @@ export default function Settings() {
   }
 
   // ---- 访问规则（docs/26）：映射 id + 单一状态 + 允许/不允许 ----
-  const [mappingIds, setMappingIds] = useState<string[]>([]);
+  // 选项必须用真实 mapping.id（不是数组索引 / pointer_id），label 显示“类型 · 绑定键 · id”。
+  const [mappingOptions, setMappingOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
 
   useEffect(() => {
     const file = localConfig.activeMappingFile;
     if (!file) {
-      setMappingIds([]);
+      setMappingOptions([]);
       return;
     }
     let cancelled = false;
-    requestPost<{ mapping_config: { mappings?: Record<string, unknown> } }>(
-      "/api/mapping/read_mapping",
-      { file },
-    )
+    requestPost<{
+      mapping_config: {
+        mappings?: Array<{
+          id?: string;
+          type?: string;
+          note?: string;
+          bind?: unknown;
+        }>;
+      };
+    }>("/api/mapping/read_mapping", { file })
       .then((res) => {
-        if (!cancelled) {
-          setMappingIds(Object.keys(res.data.mapping_config?.mappings ?? {}));
-        }
+        if (cancelled) return;
+        const list = (res.data.mapping_config?.mappings ?? [])
+          .filter((mapping) => mapping.id)
+          .map((mapping) => ({
+            value: mapping.id as string,
+            label: formatMappingLabel(mapping),
+          }));
+        setMappingOptions(list);
       })
       .catch(() => {
-        if (!cancelled) setMappingIds([]);
+        if (!cancelled) setMappingOptions([]);
       });
     return () => {
       cancelled = true;
@@ -272,6 +287,28 @@ export default function Settings() {
       messageApi?.error(String(err));
     }
   }
+
+  // 访问规则诊断：当前状态 + 自由视角是否激活（规则命中判断依赖这两项）。
+  const [accessState, setAccessState] = useState<{
+    state: string;
+    free_look_active: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    requestGet<{ state: string; free_look_active: boolean }>(
+      "/api/config/access_state",
+    )
+      .then((res) => {
+        if (!cancelled) setAccessState(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setAccessState(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadLocalConfig() {
     dispatch(setIsLoading(true));
@@ -481,12 +518,20 @@ export default function Settings() {
             tooltip={t("settings.accessRulesTip")}
           >
             <Flex vertical gap="small" className="w-full">
+              <Typography.Text type="secondary" className="text-xs">
+                {t("settings.accessCurrentState")}
+                {": "}
+                {accessState?.state ?? "-"}
+                {accessState?.free_look_active
+                  ? t("settings.accessStateSuffixActive")
+                  : ""}
+              </Typography.Text>
               {(localConfig.accessRules ?? []).map((rule, index) => (
                 <Flex key={index} gap="small" align="center" wrap>
                   <Select
                     className="w-sm"
                     value={rule.mapping_id}
-                    options={mappingIds.map((id) => ({ value: id, label: id }))}
+                    options={mappingOptions}
                     onChange={(v) => {
                       const next = [...(localConfig.accessRules ?? [])];
                       next[index] = { ...next[index], mapping_id: v };
@@ -533,7 +578,7 @@ export default function Settings() {
                   const next = [
                     ...(localConfig.accessRules ?? []),
                     {
-                      mapping_id: mappingIds[0] ?? "",
+                      mapping_id: mappingOptions[0]?.value ?? "",
                       when: "free_look_inactive",
                       allow: false,
                     },

@@ -10,6 +10,7 @@
 //! `raw_input > fps > observation > free_look_active > normal`。
 
 use bevy::{ecs::system::SystemParam, prelude::*};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::{
     access_rules::{AccessRule, CompiledAccessRules, STATE_FPS, STATE_FREE_LOOK_ACTIVE, STATE_NORMAL, STATE_OBSERVATION, STATE_RAW_INPUT},
@@ -25,6 +26,30 @@ use crate::{
 /// 每帧计算出的"当前单一状态"。
 #[derive(Resource)]
 pub struct AccessState(pub &'static str);
+
+/// 当前状态的全局快照（供 web 诊断接口读取；Bevy Resource 不能跨线程直接读）。
+static CURRENT_STATE: AtomicU8 = AtomicU8::new(4);
+
+fn state_index(state: &'static str) -> u8 {
+    match state {
+        STATE_RAW_INPUT => 0,
+        STATE_FPS => 1,
+        STATE_OBSERVATION => 2,
+        STATE_FREE_LOOK_ACTIVE => 3,
+        _ => 4,
+    }
+}
+
+/// 当前访问状态字符串（诊断用）。
+pub fn current_access_state() -> &'static str {
+    match CURRENT_STATE.load(Ordering::Relaxed) {
+        0 => STATE_RAW_INPUT,
+        1 => STATE_FPS,
+        2 => STATE_OBSERVATION,
+        3 => STATE_FREE_LOOK_ACTIVE,
+        _ => STATE_NORMAL,
+    }
+}
 
 impl Default for AccessState {
     fn default() -> Self {
@@ -80,6 +105,7 @@ pub fn update_access_state(
         !observation.is_empty(),
         free_look.is_active(),
     );
+    CURRENT_STATE.store(state_index(access.0), Ordering::Relaxed);
 
     // 规则通常 0–5 条，每帧比较一次即可；变化时才重建（避免每帧哈希构建）。
     let configured = LocalConfig::access_rules();
@@ -92,11 +118,16 @@ pub fn update_access_state(
 /// 统一判定：该映射在当前状态下是否允许触发。
 ///
 /// 返回 `true` 表示放行；调用方仍需自行判断触发方式（`just_activated` / `just_pulsed`）。
-pub fn allowed(rules: &AccessRulesResource, mapping_id: &str, state: &str) -> bool {
-    rules.compiled.allowed(mapping_id, state)
+pub fn allowed(
+    rules: &AccessRulesResource,
+    mapping_id: &str,
+    state: &str,
+    free_look_active: bool,
+) -> bool {
+    rules.compiled.allowed(mapping_id, state, free_look_active)
 }
 
-/// 把"当前状态 + 规则表"合成一个系统参数。
+/// 把"当前状态 + 规则表 + 自由视角状态"合成一个系统参数。
 ///
 /// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；直接加两个参数会让
 /// `handle_pad_cast_spell` / `handle_direction_pad` 超限。合成一个后每处只多 1 个参数。
@@ -104,12 +135,18 @@ pub fn allowed(rules: &AccessRulesResource, mapping_id: &str, state: &str) -> bo
 pub struct AccessContext<'w> {
     state: Res<'w, AccessState>,
     rules: Res<'w, AccessRulesResource>,
+    free_look: Res<'w, FreeLookState>,
 }
 
 impl AccessContext<'_> {
     /// 该映射在当前状态下是否允许触发。
     pub fn allowed(&self, mapping_id: &str) -> bool {
-        allowed(&self.rules, mapping_id, self.state.0)
+        allowed(
+            &self.rules,
+            mapping_id,
+            self.state.0,
+            self.free_look.is_active(),
+        )
     }
 }
 
@@ -143,8 +180,8 @@ mod tests {
                 allow: false,
             }]),
         };
-        assert!(!allowed(&rules, "Fire-0", STATE_FREE_LOOK_ACTIVE));
-        assert!(allowed(&rules, "Fire-0", STATE_NORMAL));
-        assert!(allowed(&rules, "Other", STATE_FREE_LOOK_ACTIVE));
+        assert!(!allowed(&rules, "Fire-0", STATE_FREE_LOOK_ACTIVE, true));
+        assert!(allowed(&rules, "Fire-0", STATE_NORMAL, false));
+        assert!(allowed(&rules, "Other", STATE_FREE_LOOK_ACTIVE, true));
     }
 }
