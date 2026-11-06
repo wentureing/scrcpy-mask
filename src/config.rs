@@ -144,7 +144,7 @@ pub struct LocalConfig {
     pub power_off_on_close: bool,
     // mouse behavior
     /// 只把鼠标位移的横向分量传给设备（纵向位移丢弃）。
-    /// 取巧实现：不做"全向读取"，直接在消费点清零 y 分量。默认关闭，保持原有手感。
+    /// 现在通过 `InputEffects::drop_y` 表达（消费点不再现场清零 y 分量）。默认关闭，保持原有手感。
     pub mouse_horizontal_only: bool,
     // free look
     /// 无点击鼠标轨迹转视角：窗口聚焦时不需要按住任何键/鼠标键，

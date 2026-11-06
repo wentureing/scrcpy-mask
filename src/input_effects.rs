@@ -22,7 +22,7 @@ fn default_scale() -> f32 {
     1.0
 }
 
-/// 输入轴效果：按轴缩放 + 按轴翻转。
+/// 输入轴效果：按轴缩放 + 按轴翻转 + 轴掩码。
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct InputEffects {
     /// 反转 X 轴（左右互换）。
@@ -31,6 +31,10 @@ pub struct InputEffects {
     /// 反转 Y 轴（上下互换）。
     #[serde(default)]
     pub invert_y: bool,
+    /// 丢弃 Y 轴（纵向位移清零）。等价旧的 `mouse_horizontal_only` 取巧实现，
+    /// 但收进效果结构后只在这一处实现（`docs/21` P4 / `docs/22` §22.19 A4）。
+    #[serde(default)]
+    pub drop_y: bool,
     /// X 轴增益（等价灵敏度）。
     #[serde(default = "default_scale")]
     pub scale_x: f32,
@@ -44,6 +48,7 @@ impl Default for InputEffects {
         Self {
             invert_x: false,
             invert_y: false,
+            drop_y: false,
             scale_x: default_scale(),
             scale_y: default_scale(),
         }
@@ -53,10 +58,10 @@ impl Default for InputEffects {
 impl InputEffects {
     /// 是否等价于"什么都不做"（用于跳过不必要的计算）。
     pub fn is_identity(&self) -> bool {
-        !self.invert_x && !self.invert_y && self.scale_x == 1.0 && self.scale_y == 1.0
+        !self.invert_x && !self.invert_y && !self.drop_y && self.scale_x == 1.0 && self.scale_y == 1.0
     }
 
-    /// 输入轴换算：先按轴缩放，再按轴翻转。
+    /// 输入轴换算顺序（固定，不要改）：缩放 → 翻转 → 丢弃 Y 轴。
     pub fn apply(&self, input: Vec2) -> Vec2 {
         if self.is_identity() {
             return input;
@@ -67,6 +72,9 @@ impl InputEffects {
         }
         if self.invert_y {
             out.y = -out.y;
+        }
+        if self.drop_y {
+            out.y = 0.0;
         }
         out
     }
@@ -120,5 +128,34 @@ mod tests {
     fn old_config_without_effects_deserializes_to_identity() {
         let effects: InputEffects = serde_json::from_str("{}").unwrap();
         assert!(effects.is_identity());
+    }
+
+    #[test]
+    fn drop_y_zeroes_vertical_component() {
+        let effects = InputEffects {
+            drop_y: true,
+            ..Default::default()
+        };
+        assert_eq!(effects.apply(Vec2::new(3.0, -4.0)), Vec2::new(3.0, 0.0));
+    }
+
+    #[test]
+    fn drop_y_wins_over_invert_and_scale() {
+        let effects = InputEffects {
+            invert_y: true,
+            drop_y: true,
+            scale_y: 3.0,
+            ..Default::default()
+        };
+        assert_eq!(effects.apply(Vec2::new(2.0, 5.0)), Vec2::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn drop_y_breaks_identity() {
+        let effects = InputEffects {
+            drop_y: true,
+            ..Default::default()
+        };
+        assert!(!effects.is_identity());
     }
 }

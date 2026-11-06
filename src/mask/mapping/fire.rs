@@ -535,13 +535,14 @@ pub fn handle_fire_trigger(
         // Some games follow the fire pointer while firing. Let an opted-in
         // fire mapping move that pointer with the FPS drag, while keeping the
         // historical fixed-pointer behavior as the default.
-        let mut raw_delta = accumulated_motion.delta;
+        let raw_delta = accumulated_motion.delta;
+        // 全局"只传横向分量"开关通过 InputEffects.drop_y 表达（不再现场清零 y）。
+        let mut effects = InputEffects::default();
         if LocalConfig::mouse_horizontal_only() {
-            // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
-            raw_delta.y = 0.0;
+            effects.drop_y = true;
         }
         fire_item.current_pos +=
-            ViewMotion::from_sensitivity(fire_item.sensitivity).delta(raw_delta);
+            ViewMotion::new(effects, fire_item.sensitivity, 0.0).delta(raw_delta);
         ControlMsgHelper::send_touch(
             &cs_tx_res.0,
             MotionEventAction::Move,

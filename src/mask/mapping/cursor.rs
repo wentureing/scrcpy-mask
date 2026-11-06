@@ -905,14 +905,14 @@ fn handle_cursor_fps(
         return;
     }
 
-    let mut raw_delta = accumulated_motion.delta;
+    let raw_delta = accumulated_motion.delta;
+    // 全局"只传横向分量"开关通过 InputEffects.drop_y 表达（不再现场清零 y）。
+    // 输入效果（翻转/增益/丢弃轴）作用在输入轴本身，换算顺序统一由 ViewMotion 负责（docs/21 P2/P4）。
+    let mut effects = fps_config.effects;
     if LocalConfig::mouse_horizontal_only() {
-        // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
-        raw_delta.y = 0.0;
+        effects.drop_y = true;
     }
-    // 输入效果（翻转/增益）作用在输入轴本身，所以翻转与灵敏度互不干扰。
-    // 换算顺序与 Observation/Fire 一致，统一由 ViewMotion 负责（docs/21 P2）。
-    let delta = ViewMotion::new(fps_config.effects, fps_config.sensitivity, 0.0).delta(raw_delta);
+    let delta = ViewMotion::new(effects, fps_config.sensitivity, 0.0).delta(raw_delta);
 
     if let Some(deferred_delta) =
         cleanup_pending_fps_touch(&cs_tx_res.0, &mut fps_config, mask_size.0)
