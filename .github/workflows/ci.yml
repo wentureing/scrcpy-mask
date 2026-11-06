@@ -234,9 +234,8 @@ jobs:
   #   1) Actions 页面手动 Run 并勾选 package；
   #   2) 或者 commit message 里带 [package]（这样"明确要求出包"时无需 token 也能直接跑）。
   package:
-    # 发包不等测试：test 在 [package] 提交上会被跳过（见 test job 的 if）。
-    # release 缓存由 test job 之前建立的 windows-x64-test 缓存提供。
-    needs: [gate, check]
+    # 发包只需要并发保护（gate）；不等 check（检查由普通 run 负责）与 test。
+    needs: [gate]
     if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))) }}
     runs-on: windows-2022
     timeout-minutes: 240
