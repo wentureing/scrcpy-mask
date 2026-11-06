@@ -113,7 +113,6 @@ impl Plugin for MappingPlugins {
                     observation::handle_observation,
                     observation::handle_observation_trigger,
                     observation::handle_observation_focus_lost,
-                    free_look::handle_free_look,
                     fire::handle_fps,
                     // raw input won't work in fps mode
                     raw_input::handle_raw_input.run_if(not(in_state(CursorState::Fps))),
@@ -123,6 +122,13 @@ impl Plugin for MappingPlugins {
                     script::handle_script,
                     script::handle_script_trigger,
                 )
+                    .in_set(CursorFrameSet::HandleMappings)
+                    .run_if(in_state(MappingState::Normal)),
+            )
+            // free look 单独注册：Bevy 的系统元组上限是 20 个，上面的主表已经占满。
+            .add_systems(
+                Update,
+                free_look::handle_free_look
                     .in_set(CursorFrameSet::HandleMappings)
                     .run_if(in_state(MappingState::Normal)),
             )

@@ -614,7 +614,8 @@ export default function Devices() {
   // 单一数据源：受控 + 未受控已由 store 合并
   const devices = useAppSelector((state) => state.other.devices);
 
-  const videoState = useState(false);
+  // 用例 3：连接手机时默认选中"视频"（U3）
+  const videoState = useState(true);
   const audioState = useState(false);
 
   useEffect(() => {

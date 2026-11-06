@@ -78,6 +78,7 @@ import { ItemBox, ItemBoxContainer } from "../common/ItemBox";
 import ButtonFire from "./ButtonFire";
 import ButtonScript from "./ButtonScript";
 import { MappingOverlayProvider } from "./MappingOverlay";
+import FreeLookEntry from "./FreeLookEntry";
 
 type MappingFileTabelItem = {
   file: string;
@@ -822,6 +823,11 @@ function Displayer({
               setState(newState);
             },
           }}
+          // 用例 9：列表不要动画（transitionName 置空），并挂到 body 上，
+          // 让 antd 的 autoAdjustOverflow 按真实视口翻转，避免画布底部/右侧的选项被裁掉。
+          transitionName=""
+          getPopupContainer={() => document.body}
+          placement="bottomLeft"
           // 左键单击即出菜单（原来只能右键），右键保留兼容
           trigger={["click", "contextMenu"]}
         >
@@ -860,6 +866,8 @@ function Displayer({
 
             return <div key={index}></div>;
           })}
+          {/* 用例 13：无点击转视角的入口圈固定在左半屏中间，方便点进编辑 */}
+          <FreeLookEntry />
         </MappingOverlayProvider>
       </div>
     </div>
