@@ -1,11 +1,11 @@
 {
   "structure": {
     "mappingButtonDragFactoryCalls": 18,
-    "buttonTsxTotalLines": 4710,
+    "buttonTsxTotalLines": 4728,
     "buttonTsxFiles": 13,
     "devicesTsxLines": 788,
     "mappingsTsxLines": 1293,
-    "settingsTsxLines": 589
+    "settingsTsxLines": 711
   },
   "i18nMissing": {}
 }
