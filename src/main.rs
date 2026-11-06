@@ -141,19 +141,13 @@ fn log_adb_owner() {
 ///
 /// 非 Windows 平台归属判定为 `Unsupported`，`Auto` 下不会误杀。
 fn cleanup_adb_server(policy: scrcpy_mask::config::AdbCleanupPolicy, adb_path: &str) {
-    use scrcpy_mask::config::AdbCleanupPolicy;
     use scrcpy_mask::scrcpy::adb_owner::{self, AdbOwner};
 
     const ADB_SERVER_PORT: u16 = 5037;
     let owner = adb_owner::detect(ADB_SERVER_PORT);
     log::info!("[Teardown] adb owner: {}", owner.describe());
 
-    let should_kill = match policy {
-        AdbCleanupPolicy::Always => true,
-        AdbCleanupPolicy::Never => false,
-        AdbCleanupPolicy::Auto => matches!(owner, AdbOwner::Bundled { .. }),
-    };
-    if !should_kill {
+    if !adb_owner::should_kill(policy, &owner) {
         if matches!(owner, AdbOwner::External { .. }) {
             log::info!("[Teardown] 外部 adb 未清理（策略 Auto，可用设置改为 always）");
         }

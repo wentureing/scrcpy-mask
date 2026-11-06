@@ -160,9 +160,49 @@ pub fn detect(port: u16) -> AdbOwner {
     }
 }
 
+/// 按清理策略判断是否应 `kill-server`（纯函数，便于单测）。
+///
+/// - `Always`：总是清理；
+/// - `Never`：从不清理；
+/// - `Auto`：只清理本程序自带 adb 启动的 server（外部 adb 不动）。
+pub fn should_kill(policy: crate::config::AdbCleanupPolicy, owner: &AdbOwner) -> bool {
+    use crate::config::AdbCleanupPolicy;
+    match policy {
+        AdbCleanupPolicy::Always => true,
+        AdbCleanupPolicy::Never => false,
+        AdbCleanupPolicy::Auto => matches!(owner, AdbOwner::Bundled { .. }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AdbCleanupPolicy;
+
+    #[test]
+    fn should_kill_respects_policy_and_owner() {
+        let bundled = AdbOwner::Bundled { pid: 1 };
+        let external = AdbOwner::External {
+            pid: 2,
+            exe: Some("C:\\platform-tools\\adb.exe".to_string()),
+        };
+        let not_found = AdbOwner::NotFound;
+        let unsupported = AdbOwner::Unsupported;
+
+        // Always：无论归属都清理
+        for owner in [&bundled, &external, &not_found, &unsupported] {
+            assert!(should_kill(AdbCleanupPolicy::Always, owner));
+        }
+        // Never：都不清理
+        for owner in [&bundled, &external, &not_found, &unsupported] {
+            assert!(!should_kill(AdbCleanupPolicy::Never, owner));
+        }
+        // Auto：只清理自带 adb
+        assert!(should_kill(AdbCleanupPolicy::Auto, &bundled));
+        assert!(!should_kill(AdbCleanupPolicy::Auto, &external));
+        assert!(!should_kill(AdbCleanupPolicy::Auto, &not_found));
+        assert!(!should_kill(AdbCleanupPolicy::Auto, &unsupported));
+    }
 
     #[test]
     fn parses_ipv4_listener() {
