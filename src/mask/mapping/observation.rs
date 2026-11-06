@@ -13,13 +13,13 @@ use bevy_ineffable::prelude::{ContinuousBinding, Ineffable, InputBinding};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    input_effects::InputEffects,
     mask::{
         mapping::{
             MappingState,
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
-            effects::InputEffects,
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
                 run_script_hook,

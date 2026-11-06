@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::LocalConfig,
+    input_effects::InputEffects,
     mask::{
         mapping::{
             MappingState,
@@ -24,7 +25,6 @@ use crate::{
                 ActiveCursorFpsConfig, CursorPosition, CursorState, FPS_MARGIN, FpsTouchMode,
                 release_fps_touches, restore_fps_touch,
             },
-            effects::InputEffects,
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
                 run_script_hook,

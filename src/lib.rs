@@ -1,4 +1,5 @@
 pub mod config;
+pub mod input_effects;
 pub mod mask;
 pub mod scrcpy;
 pub mod tokio_tasks;

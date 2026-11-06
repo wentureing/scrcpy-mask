@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     DEFAULT_LANGUAGE,
-    mask::mapping::effects::InputEffects,
+    input_effects::InputEffects,
     scrcpy::media::{AudioCodec, AudioSource, VideoCodec},
     utils::{relate_to_data_path, relate_to_root_path},
 };

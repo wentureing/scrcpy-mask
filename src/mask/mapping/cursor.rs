@@ -11,10 +11,9 @@ use bevy::{
 
 use crate::{
     config::LocalConfig,
+    input_effects::InputEffects,
     mask::{
-        mapping::{
-            MappingState, effects::InputEffects, mask_not_resizing, utils::ControlMsgHelper,
-        },
+        mapping::{MappingState, mask_not_resizing, utils::ControlMsgHelper},
         mask_command::{MaskSize, TitlebarState},
         ui::basic::{MaskContentEntity, TITLEBAR_HEIGHT},
     },
