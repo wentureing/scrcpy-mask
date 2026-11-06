@@ -619,10 +619,12 @@ function Displayer({
   state,
   setState,
   showAllMappingGuides,
+  onToggleGuides,
 }: {
   state: EditState;
   setState: React.Dispatch<React.SetStateAction<EditState | null>>;
   showAllMappingGuides: boolean;
+  onToggleGuides: () => void;
 }) {
   const dispatch = useAppDispatch();
   const maskArea = useAppSelector((state) => state.other.maskArea);
@@ -788,11 +790,26 @@ function Displayer({
 
   return (
     <div className="w-full">
-      <Flex justify="space-between">
-        <CursorPos ref={cursorPosRef} />
-        <div className="color-text-secondary font-bold">
-          {`[${originalSize.width} x ${originalSize.height}]`}
-        </div>
+      {/* 用例 8：左上角=坐标 + 正在使用的 json；右上角=分辨率 + 辅助范围 + 刷新背景 */}
+      <Flex justify="space-between" align="center">
+        <Flex align="center" gap="small">
+          <CursorPos ref={cursorPosRef} />
+          <span className="color-text-secondary text-xs">{state.file}</span>
+        </Flex>
+        <Space size="small" align="center">
+          <div className="color-text-secondary font-bold">
+            {`[${originalSize.width} x ${originalSize.height}]`}
+          </div>
+          <Button
+            size="small"
+            type={showAllMappingGuides ? "primary" : "default"}
+            icon={<EyeOutlined />}
+            onClick={onToggleGuides}
+          >
+            {t("mappings.home.showGuides")}
+          </Button>
+          <RefreshImageButton />
+        </Space>
       </Flex>
       <div
         ref={displayerRef}
@@ -1264,16 +1281,6 @@ export default function Mappings() {
               {t("mappings.home.manage")}
             </Button>
           </Space.Compact>
-          <Space>
-            <Button
-              type={showAllMappingGuides ? "primary" : "default"}
-              icon={<EyeOutlined />}
-              onClick={() => setShowAllMappingGuides((value) => !value)}
-            >
-              {t("mappings.home.showGuides")}
-            </Button>
-            <RefreshImageButton />
-          </Space>
         </Flex>
       </section>
       <section className="flex-grow-1 flex-shrink-0 pb-4">
@@ -1289,6 +1296,9 @@ export default function Mappings() {
                 state={editState}
                 setState={setEditState}
                 showAllMappingGuides={showAllMappingGuides}
+                onToggleGuides={() =>
+                  setShowAllMappingGuides((value) => !value)
+                }
               />
             </Splitter.Panel>
             <Splitter.Panel />
