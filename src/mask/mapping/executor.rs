@@ -215,3 +215,85 @@ impl<ReleaseContext> MappingLifecycleState<ReleaseContext> {
         self.versions.get(action).copied().unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type State = MappingLifecycleState<&'static str>;
+
+    #[test]
+    fn normal_start_finishes_ready_without_pending_release() {
+        let mut state = State::default();
+        let version = state.begin_start("Fire-0");
+        assert_eq!(version, 1);
+        match state.finish_start("Fire-0", version) {
+            MappingLifecycleStart::Ready { pending_release } => {
+                assert!(pending_release.is_none());
+            }
+            MappingLifecycleStart::Stale => panic!("expected Ready"),
+        }
+    }
+
+    #[test]
+    fn early_release_is_replayed_after_start() {
+        let mut state = State::default();
+        let version = state.begin_start("Fire-0");
+        assert!(state.record_early_release("Fire-0", "release-ctx"));
+        match state.finish_start("Fire-0", version) {
+            MappingLifecycleStart::Ready { pending_release } => {
+                assert_eq!(pending_release, Some("release-ctx"));
+            }
+            MappingLifecycleStart::Stale => panic!("expected Ready"),
+        }
+    }
+
+    #[test]
+    fn stale_when_newer_start_supersedes() {
+        let mut state = State::default();
+        let first = state.begin_start("Fire-0");
+        let second = state.begin_start("Fire-0");
+        assert_ne!(first, second);
+        assert!(matches!(
+            state.finish_start("Fire-0", first),
+            MappingLifecycleStart::Stale
+        ));
+        match state.finish_start("Fire-0", second) {
+            MappingLifecycleStart::Ready { pending_release } => {
+                assert!(pending_release.is_none());
+            }
+            MappingLifecycleStart::Stale => panic!("expected Ready"),
+        }
+    }
+
+    #[test]
+    fn early_release_without_pending_start_is_ignored() {
+        let mut state = State::default();
+        assert!(!state.record_early_release("Fire-0", "release-ctx"));
+    }
+
+    #[test]
+    fn cancel_pending_invalidates_in_flight_start() {
+        let mut state = State::default();
+        let version = state.begin_start("Fire-0");
+        state.cancel_pending("Fire-0");
+        assert!(matches!(
+            state.finish_start("Fire-0", version),
+            MappingLifecycleStart::Stale
+        ));
+    }
+
+    #[test]
+    fn clear_pending_drops_early_release() {
+        let mut state = State::default();
+        let version = state.begin_start("Fire-0");
+        state.record_early_release("Fire-0", "release-ctx");
+        state.clear_pending("Fire-0");
+        match state.finish_start("Fire-0", version) {
+            MappingLifecycleStart::Ready { pending_release } => {
+                assert!(pending_release.is_none());
+            }
+            MappingLifecycleStart::Stale => panic!("expected Ready"),
+        }
+    }
+}
