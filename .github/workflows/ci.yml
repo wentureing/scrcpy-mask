@@ -327,18 +327,12 @@ jobs:
           cache-on-failure: true
 
       # 只跑代表性路径：触点路由 / UHID 触控（复用 release 编译产物）
-      - name: Cargo build (release, warm up for tests)
+      # 打包流程只做构建与打包，不跑测试（测试由 test job 负责）。
+      - name: Cargo build (release)
         shell: pwsh
         run: |
           . ./scripts/ffmpeg-env.ps1
           cargo build --release --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Representative unit tests
-        shell: pwsh
-        run: |
-          . ./scripts/ffmpeg-env.ps1
-          cargo test --release --lib --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build package
