@@ -8,6 +8,7 @@ use std::{
 
 use crate::{
     DEFAULT_LANGUAGE,
+    access_rules::AccessRule,
     input_effects::InputEffects,
     scrcpy::media::{AudioCodec, AudioSource, VideoCodec},
     utils::{relate_to_data_path, relate_to_root_path},
@@ -70,42 +71,73 @@ mod uhid_config_tests {
     #[test]
     fn migrates_v0_single_exit_key_to_array() {
         let mut value = serde_json::json!({ "free_look_exit_key": "KeyF" });
-        assert!(migrate_config(&mut value));
+        assert!(migrate_config(&mut value, &Default::default()));
 
         assert_eq!(value["free_look_exit_keys"], serde_json::json!(["KeyF"]));
         assert_eq!(value["free_look_enter_keys"], serde_json::json!([]));
-        assert_eq!(
-            value["free_look_blocked_mouse_buttons"],
-            serde_json::json!([])
-        );
         assert_eq!(value["virtual_cursor_visible"], serde_json::json!(false));
-        assert_eq!(value["config_version"], serde_json::json!(1));
+        assert_eq!(value["config_version"], serde_json::json!(2));
         assert!(value.get("free_look_exit_key").is_none());
     }
 
     #[test]
     fn migration_falls_back_to_default_key_and_is_idempotent() {
         let mut value = serde_json::json!({});
-        assert!(migrate_config(&mut value));
+        assert!(migrate_config(&mut value, &Default::default()));
         assert_eq!(
             value["free_look_exit_keys"],
             serde_json::json!(["ControlLeft"])
         );
 
-        // 第二次迁移：版本已是 1，不再改动。
+        // 第二次迁移：版本已是 2，不再改动。
         let snapshot = value.clone();
-        assert!(!migrate_config(&mut value));
+        assert!(!migrate_config(&mut value, &Default::default()));
         assert_eq!(value, snapshot);
     }
 
     #[test]
     fn future_config_version_is_not_migrated() {
         let mut value = serde_json::json!({ "config_version": 99, "free_look_exit_key": "KeyF" });
-        assert!(!migrate_config(&mut value));
+        assert!(!migrate_config(&mut value, &Default::default()));
         // 不迁移、也不改版本号（避免降级时破坏用户配置）。
         assert_eq!(value["config_version"], serde_json::json!(99));
         assert_eq!(value["free_look_exit_key"], serde_json::json!("KeyF"));
         assert!(value.get("free_look_exit_keys").is_none());
+    }
+
+    #[test]
+    fn migrates_blocked_mouse_buttons_to_access_rules() {
+        let mut value = serde_json::json!({
+            "free_look_blocked_mouse_buttons": ["M-Left"],
+        });
+        let mut binds = std::collections::HashMap::new();
+        binds.insert("Fire-0".to_string(), vec!["M-Left".to_string()]);
+        binds.insert("Tap-1".to_string(), vec!["KeyF".to_string()]);
+
+        assert!(migrate_config(&mut value, &binds));
+
+        let rules = value["access_rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["mapping_id"], "Fire-0");
+        assert_eq!(rules[0]["when"], "free_look_active");
+        assert_eq!(rules[0]["allow"], false);
+        assert_eq!(value["config_version"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn keeps_blocked_field_when_mapping_file_unavailable() {
+        let mut value = serde_json::json!({
+            "free_look_blocked_mouse_buttons": ["M-Left"],
+        });
+        // 映射文件不可用 → 传空表
+        assert!(migrate_config(&mut value, &Default::default()));
+
+        // 旧字段保留，规则不生成，版本仍然升级（下次启动会再尝试读映射文件）。
+        assert_eq!(
+            value["free_look_blocked_mouse_buttons"],
+            serde_json::json!(["M-Left"])
+        );
+        assert_eq!(value["access_rules"], serde_json::json!([]));
     }
 }
 
@@ -118,7 +150,7 @@ fn default_free_look_exit_key() -> String {
 }
 
 /// 当前配置版本。结构发生不兼容变化时 +1，并在 [`migrate_config`] 里加对应迁移器。
-pub const CURRENT_CONFIG_VERSION: u32 = 1;
+pub const CURRENT_CONFIG_VERSION: u32 = 2;
 
 fn default_config_version() -> u32 {
     CURRENT_CONFIG_VERSION
@@ -224,8 +256,13 @@ pub struct LocalConfig {
     pub free_look_enter_keys: Vec<String>,
     /// 自由视角激活期间屏蔽的鼠标键（字符串形式，如 `"M-Left"`）。
     /// **默认空列表**：默认不屏蔽任何键，由用户自行配置。
+    /// 仅用于 v0→v2 迁移；新逻辑请使用 `access_rules`（`docs/26`）。
     #[serde(default)]
     pub free_look_blocked_mouse_buttons: Vec<String>,
+    /// 访问规则：在某种状态下允许/不允许某个映射触发（`docs/26`）。
+    /// **默认空表**：没有规则时全部允许。
+    #[serde(default)]
+    pub access_rules: Vec<AccessRule>,
     /// 虚拟光标：默认不显示；启用后在自由视角激活时显示（普通模式不显示）。
     #[serde(default)]
     pub virtual_cursor_visible: bool,
@@ -279,6 +316,7 @@ impl Default for LocalConfig {
             free_look_exit_keys: default_free_look_exit_keys(),
             free_look_enter_keys: Vec::new(),
             free_look_blocked_mouse_buttons: Vec::new(),
+            access_rules: Vec::new(),
             virtual_cursor_visible: false,
             config_version: CURRENT_CONFIG_VERSION,
         }
@@ -363,7 +401,9 @@ impl LocalConfig {
             .get("config_version")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let migrated = migrate_config(&mut value);
+        // 迁移需要知道"哪些映射绑定了哪些键"（把旧屏蔽列表转成规则）；读不到就传空表。
+        let mapping_binds = read_active_mapping_binds();
+        let migrated = migrate_config(&mut value, &mapping_binds);
         let config: LocalConfig = serde_json::from_value(value)
             .map_err(|e| format!("{}: {}", t!("localConfig.serializeConfigError"), e))?;
         *CONFIG.write().unwrap() = config;
@@ -415,6 +455,11 @@ impl LocalConfig {
     /// 虚拟光标是否启用（默认不显示）。每帧读取。
     pub fn virtual_cursor_visible() -> bool {
         CONFIG.read().unwrap().virtual_cursor_visible
+    }
+
+    /// 访问规则（默认空表）。配置变更时重建。
+    pub fn access_rules() -> Vec<AccessRule> {
+        CONFIG.read().unwrap().access_rules.clone()
     }
 
     /// 灵敏度同时写两个轴的 scale（前端只有一个滑块）。
@@ -491,15 +536,72 @@ impl LocalConfig {
         (free_look_exit_keys, Vec<String>),
         (free_look_enter_keys, Vec<String>),
         (free_look_blocked_mouse_buttons, Vec<String>),
+        (access_rules, Vec<AccessRule>),
         (virtual_cursor_visible, bool),
     );
 }
 
-/// 配置版本迁移：按 `config_version` 逐级升级 JSON。
+/// 读取当前映射文件里"映射 id → 绑定的输入字符串"。
+///
+/// 迁移 v0→v2 需要它把旧的 `free_look_blocked_mouse_buttons` 转成按映射 id 的规则。
+/// 只收集 `bind` / `pad_bind` 字段下的字符串，避免把 note/id 误当成绑定。
+fn read_active_mapping_binds() -> std::collections::HashMap<String, Vec<String>> {
+    let file = LocalConfig::get().active_mapping_file;
+    if file.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let path = relate_to_data_path(["mapping", &file]);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return std::collections::HashMap::new();
+    };
+    let Some(mappings) = value.get("mappings").and_then(|v| v.as_object()) else {
+        return std::collections::HashMap::new();
+    };
+    let mut out = std::collections::HashMap::new();
+    for (id, mapping) in mappings {
+        let mut binds = Vec::new();
+        collect_binds(mapping, &mut binds);
+        if !binds.is_empty() {
+            out.insert(id.clone(), binds);
+        }
+    }
+    out
+}
+
+fn collect_binds(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(text) => out.push(text.clone()),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_binds(item, out);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, item) in map {
+                if key == "bind" || key == "pad_bind" {
+                    collect_binds(item, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 配置版本迁移：按 `config_version` 升级 JSON。
+///
+/// v1 从未发布，所以**只保留一个 v0→v2 迁移器**（用户决定）。
+/// `mapping_binds`：`mapping_id → 该映射绑定的输入字符串列表`，由调用方从当前映射文件读取；
+/// 为空表示映射文件不可用（此时保留旧字段、不生成规则）。
 ///
 /// 返回是否执行了迁移。文件版本高于当前程序版本时**不迁移、不改写**，
 /// 避免用户在新版程序里用旧版程序打开时被降级破坏。
-pub fn migrate_config(value: &mut serde_json::Value) -> bool {
+pub fn migrate_config(
+    value: &mut serde_json::Value,
+    mapping_binds: &std::collections::HashMap<String, Vec<String>>,
+) -> bool {
     let Some(obj) = value.as_object_mut() else {
         return false;
     };
@@ -517,8 +619,8 @@ pub fn migrate_config(value: &mut serde_json::Value) -> bool {
     }
 
     let mut migrated = false;
-    if version < 1 {
-        migrate_v0_to_v1(obj);
+    if version < CURRENT_CONFIG_VERSION as u64 {
+        migrate_v0_to_v2(obj, mapping_binds);
         migrated = true;
     }
     if migrated {
@@ -530,10 +632,16 @@ pub fn migrate_config(value: &mut serde_json::Value) -> bool {
     migrated
 }
 
-/// v0 → v1：
+/// v0 → v2（一次到位）：
 /// - 单个 `free_look_exit_key` → `free_look_exit_keys` 数组（并删除旧键）；
-/// - 补齐 `free_look_enter_keys` / `free_look_blocked_mouse_buttons` / `virtual_cursor_visible`。
-fn migrate_v0_to_v1(obj: &mut serde_json::Map<String, serde_json::Value>) {
+/// - 补齐 `free_look_enter_keys` / `virtual_cursor_visible` / `access_rules`；
+/// - `free_look_blocked_mouse_buttons` 非空且映射文件可用时，转成
+///   `{mapping_id, when: "free_look_active", allow: false}` 规则；
+///   映射文件不可用时**保留旧字段**（下次启动再试）。
+fn migrate_v0_to_v2(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    mapping_binds: &std::collections::HashMap<String, Vec<String>>,
+) {
     if obj.contains_key("free_look_exit_keys") {
         // 新字段已存在，旧字段只是残留。
         obj.remove("free_look_exit_key");
@@ -551,8 +659,47 @@ fn migrate_v0_to_v1(obj: &mut serde_json::Map<String, serde_json::Value>) {
     }
     obj.entry("free_look_enter_keys")
         .or_insert_with(|| serde_json::Value::Array(Vec::new()));
-    obj.entry("free_look_blocked_mouse_buttons")
-        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
     obj.entry("virtual_cursor_visible")
         .or_insert(serde_json::Value::Bool(false));
+    obj.entry("access_rules")
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+
+    let blocked: Vec<String> = obj
+        .get("free_look_blocked_mouse_buttons")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if blocked.is_empty() {
+        return;
+    }
+    if mapping_binds.is_empty() {
+        log::warn!(
+            "迁移访问规则时无法读取映射文件，保留 free_look_blocked_mouse_buttons 以便下次重试"
+        );
+        return;
+    }
+
+    let mut rules = obj
+        .get("access_rules")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for (mapping_id, binds) in mapping_binds {
+        if binds.iter().any(|bind| blocked.iter().any(|key| key == bind)) {
+            rules.push(serde_json::json!({
+                "mapping_id": mapping_id,
+                "when": crate::access_rules::STATE_FREE_LOOK_ACTIVE,
+                "allow": false,
+            }));
+        }
+    }
+    obj.insert(
+        "access_rules".to_string(),
+        serde_json::Value::Array(rules),
+    );
 }

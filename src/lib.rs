@@ -1,3 +1,4 @@
+pub mod access_rules;
 pub mod config;
 pub mod input_effects;
 pub mod mask;
