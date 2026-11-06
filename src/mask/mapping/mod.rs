@@ -16,6 +16,7 @@ pub mod script_helper;
 pub mod serde_float;
 pub mod swipe;
 pub mod tap;
+pub mod touch_pulse;
 pub mod utils;
 pub mod view_motion;
 
