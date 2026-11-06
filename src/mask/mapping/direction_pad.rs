@@ -10,6 +10,73 @@ use crate::tokio_tasks::TokioTasksRuntime;
 /// 所有方向键松开后的抬指宽限期（ms）。
 /// 期间重新按下方向键会复用同一触点直接 Move，避免 W→A 被拆成"抬指 → 重按 → 初始滑动"。
 const RELEASE_GRACE_MS: u64 = 40;
+
+/// 方向轮盘每帧的决策结果（纯函数输出，便于单测 W→A 抢占/宽限）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DirectionDecision {
+    /// 无需动作（初始缓动未完成且无方向，或宽限期内等待）
+    Ignore,
+    /// 初始缓动未完成就被新方向抢占：直接跳到新方向
+    Takeover(Vec2),
+    /// 正负方向互相抵消：回到中心，不抬起
+    Center(Vec2),
+    /// 全部松开：开始宽限期
+    StartGrace,
+    /// 全部松开且宽限期未到：继续等待
+    WaitGrace,
+    /// 全部松开且宽限期已到：抬起
+    Release,
+    /// 方向变化：直接跳到最新方向
+    Move(Vec2),
+    /// 方向没变且随机化到期：发送抖动
+    Jitter,
+}
+
+/// 方向轮盘的纯决策函数。
+///
+/// 对应 `handle_direction_pad` 原有的 if 链，保持行为一致：
+/// 1. 初始缓动未完成 → 有方向就抢占（`Takeover`），无方向忽略；
+/// 2. 方向为零：
+///    - 仍有方向键按着（正负抵消）→ `Center`；
+///    - 全松开 → `StartGrace` / `WaitGrace` / `Release`；
+/// 3. 方向变化 → `Move`；
+/// 4. 方向不变且随机化到期 → `Jitter`。
+#[allow(clippy::too_many_arguments)]
+pub fn decide_direction(
+    initial_swipe_done: bool,
+    state: Vec2,
+    last_state: Vec2,
+    any_direction_active: bool,
+    release_at: Option<Instant>,
+    now: Instant,
+    enable_randomization: bool,
+    next_jitter_at: Instant,
+) -> DirectionDecision {
+    if !initial_swipe_done {
+        return if state.x != 0.0 || state.y != 0.0 {
+            DirectionDecision::Takeover(state)
+        } else {
+            DirectionDecision::Ignore
+        };
+    }
+    if state.x == 0.0 && state.y == 0.0 {
+        if any_direction_active {
+            return DirectionDecision::Center(state);
+        }
+        return match release_at {
+            Some(at) if now >= at => DirectionDecision::Release,
+            Some(_) => DirectionDecision::WaitGrace,
+            None => DirectionDecision::StartGrace,
+        };
+    }
+    if state != last_state {
+        return DirectionDecision::Move(state);
+    }
+    if enable_randomization && now > next_jitter_at {
+        return DirectionDecision::Jitter;
+    }
+    DirectionDecision::Ignore
+}
 use crate::{
     mask::mapping::{
         MappingState,
@@ -728,5 +795,135 @@ pub fn handle_direction_pad(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn t0() -> Instant {
+        Instant::now()
+    }
+
+    #[test]
+    fn takeover_when_initial_swipe_not_done() {
+        let now = t0();
+        // 有方向：立即抢占
+        assert_eq!(
+            decide_direction(
+                false,
+                Vec2::new(1.0, 0.0),
+                Vec2::ZERO,
+                true,
+                None,
+                now,
+                false,
+                now,
+            ),
+            DirectionDecision::Takeover(Vec2::new(1.0, 0.0))
+        );
+        // 无方向：忽略
+        assert_eq!(
+            decide_direction(false, Vec2::ZERO, Vec2::ZERO, true, None, now, false, now),
+            DirectionDecision::Ignore
+        );
+    }
+
+    #[test]
+    fn center_when_opposite_directions_cancel() {
+        let now = t0();
+        assert_eq!(
+            decide_direction(
+                true,
+                Vec2::ZERO,
+                Vec2::new(1.0, 0.0),
+                true,
+                None,
+                now,
+                false,
+                now,
+            ),
+            DirectionDecision::Center(Vec2::ZERO)
+        );
+    }
+
+    #[test]
+    fn grace_starts_waits_then_releases() {
+        let now = t0();
+        let last = Vec2::new(1.0, 0.0);
+        // 全松开、没有宽限记录 → 开始宽限
+        assert_eq!(
+            decide_direction(true, Vec2::ZERO, last, false, None, now, false, now),
+            DirectionDecision::StartGrace
+        );
+        // 宽限未到 → 等待
+        assert_eq!(
+            decide_direction(
+                true,
+                Vec2::ZERO,
+                last,
+                false,
+                Some(now + Duration::from_millis(40)),
+                now,
+                false,
+                now,
+            ),
+            DirectionDecision::WaitGrace
+        );
+        // 宽限已到 → 抬起
+        assert_eq!(
+            decide_direction(
+                true,
+                Vec2::ZERO,
+                last,
+                false,
+                Some(now),
+                now,
+                false,
+                now,
+            ),
+            DirectionDecision::Release
+        );
+    }
+
+    #[test]
+    fn move_on_direction_change() {
+        let now = t0();
+        assert_eq!(
+            decide_direction(
+                true,
+                Vec2::new(0.0, -1.0),
+                Vec2::new(1.0, 0.0),
+                true,
+                None,
+                now,
+                false,
+                now,
+            ),
+            DirectionDecision::Move(Vec2::new(0.0, -1.0))
+        );
+    }
+
+    #[test]
+    fn jitter_only_when_due_and_enabled() {
+        let now = t0();
+        let later = now + Duration::from_millis(1);
+        let state = Vec2::new(1.0, 0.0);
+        // 随机化到期 → Jitter
+        assert_eq!(
+            decide_direction(true, state, state, true, None, later, true, now),
+            DirectionDecision::Jitter
+        );
+        // 未到期 → Ignore
+        assert_eq!(
+            decide_direction(true, state, state, true, None, now, true, later),
+            DirectionDecision::Ignore
+        );
+        // 未启用随机化 → Ignore
+        assert_eq!(
+            decide_direction(true, state, state, true, None, later, false, now),
+            DirectionDecision::Ignore
+        );
     }
 }
