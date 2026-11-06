@@ -118,6 +118,7 @@ mod tests {
         let effects = InputEffects {
             invert_x: true,
             invert_y: false,
+            drop_y: false,
             scale_x: 2.0,
             scale_y: 0.5,
         };

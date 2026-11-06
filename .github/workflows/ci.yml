@@ -154,23 +154,74 @@ jobs:
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
-      # P0：测试进 check（原先只有 package job 跑，且带 `-- scrcpy::` 过滤，
-      # 导致 54/67 个测试从不执行）。这里跑全部 lib 测试，并先打印测试清单，
-      # 便于在日志里确认"到底跑了哪些"，避免再次静默漏跑。
+  # 测试 job（P0，方案 1）：
+  #   原先只有 package job 跑测试，且带 `-- scrcpy::` 过滤，导致 54/67 个测试从不执行。
+  #   这里独立成一个 job，复用 package 的 release 缓存（shared-key / add-job-id-key 与 package 一致），
+  #   只跑全部 lib 测试、不打包；普通 push 也会执行。
+  #   注意：与 package 共用同一份缓存 key，check job 保持轻量、不改它的缓存组成。
+  test:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout codes
+        uses: actions/checkout@v4
+
+      - name: Set up msvc
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-7.1.2/ffmpeg-windows-x64
+          key: ffmpeg-windows-x64-7.1.2-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Set up msys
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: false
+          msystem: MINGW64
+          cache: true
+          install: >-
+            make
+            diffutils
+            gawk
+            yasm
+            pkg-config
+          path-type: inherit
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: ./scripts/build-ffmpeg.sh
+
+      # 与 package job 相同的 key，直接命中 release 编译产物
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-package
+          add-job-id-key: false
+          env-vars: ""
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/custom/improvements' }}
+
       - name: Cargo test (all lib tests)
         shell: pwsh
         run: |
           . ./scripts/ffmpeg-env.ps1
-          cargo test --lib --locked -- --list
+          cargo test --release --lib --locked -- --list
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test --lib --locked
+          cargo test --release --lib --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # 按需出包：
   #   1) Actions 页面手动 Run 并勾选 package；
   #   2) 或者 commit message 里带 [package]（这样"明确要求出包"时无需 token 也能直接跑）。
   package:
-    needs: [gate, check]
+    needs: [gate, check, test]
     if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))) }}
     runs-on: windows-latest
     timeout-minutes: 240
