@@ -16,6 +16,7 @@ use crate::{
         binding::{ButtonBinding, DirectionBinding, ValidateMappingConfig},
         config::ActiveMappingConfig,
         cursor::{CursorPosition, CursorState},
+        free_look,
         executor::{
             MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
             run_script_hook,
@@ -441,6 +442,7 @@ pub fn handle_direction_pad(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     block: Res<BlockDirectionPad>,
+    free_look: Res<free_look::FreeLookState>,
     mut direction_pad_map: ResMut<DirectionPadMap>,
     mut lifecycle_state: ResMut<DirectionPadLifecycleState>,
     key_input: Res<ButtonInput<KeyCode>>,
@@ -458,10 +460,17 @@ pub fn handle_direction_pad(
                 let original_size: Vec2 = active_mapping.original_size.into();
                 // 层④：本映射所有坐标都经指令发送器统一发出
                 let sender = IntentSender::new(cs_tx_res.0.clone(), original_size);
-                let mut state = scale_direction_2d_state(
-                    ineffable.direction_2d(action.ineff_dual_axis()),
-                    mapping,
-                );
+                // 自由视角激活且该映射绑定了被屏蔽的鼠标键时，视为"无输入"，
+                // 走既有的释放/回中逻辑，避免触点一直按住。
+                let raw_dir = if free_look::is_blocked_direction(
+                    &mapping.bind,
+                    free_look.is_active(),
+                ) {
+                    Default::default()
+                } else {
+                    ineffable.direction_2d(action.ineff_dual_axis())
+                };
+                let mut state = scale_direction_2d_state(raw_dir, mapping);
                 if state.y < 0.0
                     && mapping.up_boost_key.as_ref().is_some_and(|b| {
                         b.is_any_key_pressed(&key_input) || b.is_any_mouse_pressed(&mouse_input)

@@ -377,7 +377,7 @@ fn sync_normal_cursor_capture_window(
 fn sync_virtual_cursor(
     mut commands: Commands,
     mask_content: Res<MaskContentEntity>,
-    normal_capture: Res<NormalCursorCapture>,
+    free_look: Res<FreeLookState>,
     cursor_pos: Res<CursorPosition>,
     mask_size: Res<MaskSize>,
     mut query: Query<&mut Node, With<VirtualCursor>>,
@@ -475,8 +475,10 @@ fn sync_virtual_cursor(
     }
 
     let display_pos = clamped_virtual_cursor_pos(cursor_pos.0, mask_size.0);
+    // 虚拟光标默认不显示；只有用户启用且处于自由视角激活状态时才显示。
+    let visible = LocalConfig::virtual_cursor_visible() && free_look.is_active();
     for mut node in query.iter_mut() {
-        node.display = if normal_capture.is_active() {
+        node.display = if visible {
             Display::Flex
         } else {
             Display::None

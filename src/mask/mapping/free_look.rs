@@ -20,6 +20,7 @@ use crate::{
     config::LocalConfig,
     mask::{
         mapping::{
+            binding::{ButtonBinding, DirectionBinding},
             config::ActiveMappingConfig,
             cursor::{CursorState, NormalCursorCapture},
             observation::ActiveObservationMap,
@@ -70,12 +71,11 @@ impl Default for FreeLookState {
     }
 }
 
-/// 配置里的退出键名 → Bevy `KeyCode`。
+/// 配置里的键名 → Bevy `KeyCode`。
 ///
-/// 只覆盖设置页提供的选项；未知键返回 `None`（不响应，避免误触）。
-fn exit_keycode() -> Option<KeyCode> {
-    let name = LocalConfig::get().free_look_exit_key;
-    Some(match name.as_str() {
+/// 只覆盖设置页提供的选项；未知键返回 `None`（忽略，避免误触）。
+fn parse_key(name: &str) -> Option<KeyCode> {
+    Some(match name {
         "ControlLeft" => KeyCode::ControlLeft,
         "ControlRight" => KeyCode::ControlRight,
         "ShiftLeft" => KeyCode::ShiftLeft,
@@ -91,6 +91,54 @@ fn exit_keycode() -> Option<KeyCode> {
         "KeyV" => KeyCode::KeyV,
         "Backquote" => KeyCode::Backquote,
         _ => return None,
+    })
+}
+
+/// 退出键集合（可能多个）。
+fn exit_keycodes() -> Vec<KeyCode> {
+    LocalConfig::free_look_exit_keys()
+        .iter()
+        .filter_map(|name| parse_key(name))
+        .collect()
+}
+
+/// 恢复键集合（可能多个）。
+fn enter_keycodes() -> Vec<KeyCode> {
+    LocalConfig::free_look_enter_keys()
+        .iter()
+        .filter_map(|name| parse_key(name))
+        .collect()
+}
+
+/// 自由视角激活期间是否应屏蔽这次映射触发。
+///
+/// 只有 `active == true` 且按钮绑定里包含"用户配置屏蔽的鼠标键"才返回 true；
+/// 默认屏蔽列表为空 → 永远返回 false（"就像没有一样"）。
+pub fn is_blocked_in_free_look(bind: &ButtonBinding, active: bool) -> bool {
+    if !active {
+        return false;
+    }
+    let blocked = LocalConfig::free_look_blocked_mouse_buttons();
+    if blocked.is_empty() {
+        return false;
+    }
+    bind.to_string()
+        .split('+')
+        .any(|part| blocked.iter().any(|key| key == part))
+}
+
+/// 方向类绑定（方向轮盘/摇杆施法）的屏蔽判断：四个方向任一命中即屏蔽。
+pub fn is_blocked_direction(bind: &DirectionBinding, active: bool) -> bool {
+    if !active {
+        return false;
+    }
+    let blocked = LocalConfig::free_look_blocked_mouse_buttons();
+    if blocked.is_empty() {
+        return false;
+    }
+    bind.to_string_vec().iter().any(|dir| {
+        dir.split('+')
+            .any(|part| blocked.iter().any(|key| key == part))
     })
 }
 
@@ -136,18 +184,24 @@ pub fn handle_free_look(
         return;
     }
 
-    // 2) 退出键切换：进入需有活跃映射，退出随时可用。
-    if let Some(exit_key) = exit_keycode() {
-        if keys.just_pressed(exit_key) {
-            if state.active {
-                state.active = false;
-                capture.release(FREE_LOOK_CAPTURE_OWNER);
-                state.pulse.release(&cs_tx_res, size);
-            } else if active_mapping.0.is_some() {
-                state.active = true;
-                capture.request(FREE_LOOK_CAPTURE_OWNER);
-            }
+    // 2) 退出/恢复键切换（均可配置多个、并存）：
+    //    - 激活时：任一退出键 → 退出；
+    //    - 未激活时：任一退出键或恢复键 → 进入（退出键保留旧版 toggle 手感）。
+    let exit_pressed = exit_keycodes()
+        .iter()
+        .any(|key| keys.just_pressed(*key));
+    let enter_pressed = enter_keycodes()
+        .iter()
+        .any(|key| keys.just_pressed(*key));
+    if state.active {
+        if exit_pressed {
+            state.active = false;
+            capture.release(FREE_LOOK_CAPTURE_OWNER);
+            state.pulse.release(&cs_tx_res, size);
         }
+    } else if (exit_pressed || enter_pressed) && active_mapping.0.is_some() {
+        state.active = true;
+        capture.request(FREE_LOOK_CAPTURE_OWNER);
     }
 
     if !state.active {

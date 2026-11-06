@@ -66,6 +66,47 @@ mod uhid_config_tests {
         );
         assert!(serde_json::from_str::<LocalConfig>(r#"{"touch_backend":"unknown"}"#).is_err());
     }
+
+    #[test]
+    fn migrates_v0_single_exit_key_to_array() {
+        let mut value = serde_json::json!({ "free_look_exit_key": "KeyF" });
+        assert!(migrate_config(&mut value));
+
+        assert_eq!(value["free_look_exit_keys"], serde_json::json!(["KeyF"]));
+        assert_eq!(value["free_look_enter_keys"], serde_json::json!([]));
+        assert_eq!(
+            value["free_look_blocked_mouse_buttons"],
+            serde_json::json!([])
+        );
+        assert_eq!(value["virtual_cursor_visible"], serde_json::json!(false));
+        assert_eq!(value["config_version"], serde_json::json!(1));
+        assert!(value.get("free_look_exit_key").is_none());
+    }
+
+    #[test]
+    fn migration_falls_back_to_default_key_and_is_idempotent() {
+        let mut value = serde_json::json!({});
+        assert!(migrate_config(&mut value));
+        assert_eq!(
+            value["free_look_exit_keys"],
+            serde_json::json!(["ControlLeft"])
+        );
+
+        // 第二次迁移：版本已是 1，不再改动。
+        let snapshot = value.clone();
+        assert!(!migrate_config(&mut value));
+        assert_eq!(value, snapshot);
+    }
+
+    #[test]
+    fn future_config_version_is_not_migrated() {
+        let mut value = serde_json::json!({ "config_version": 99, "free_look_exit_key": "KeyF" });
+        assert!(!migrate_config(&mut value));
+        // 不迁移、也不改版本号（避免降级时破坏用户配置）。
+        assert_eq!(value["config_version"], serde_json::json!(99));
+        assert_eq!(value["free_look_exit_key"], serde_json::json!("KeyF"));
+        assert!(value.get("free_look_exit_keys").is_none());
+    }
 }
 
 fn default_web_bind_addr() -> Ipv4Addr {
@@ -74,6 +115,17 @@ fn default_web_bind_addr() -> Ipv4Addr {
 
 fn default_free_look_exit_key() -> String {
     "ControlLeft".to_string()
+}
+
+/// 当前配置版本。结构发生不兼容变化时 +1，并在 [`migrate_config`] 里加对应迁移器。
+pub const CURRENT_CONFIG_VERSION: u32 = 1;
+
+fn default_config_version() -> u32 {
+    CURRENT_CONFIG_VERSION
+}
+
+fn default_free_look_exit_keys() -> Vec<String> {
+    vec![default_free_look_exit_key()]
 }
 
 fn bundled_adb_path() -> PathBuf {
@@ -159,9 +211,27 @@ pub struct LocalConfig {
     #[serde(default)]
     pub free_look_effects: InputEffects,
     /// free look 的退出键（Bevy `KeyCode` 名称，默认 `ControlLeft`）。
-    /// 第一次按下进入（锁光标），再次按下退出（不锁光标）；冲突时后端拒绝保存（D10）。
+    ///
+    /// **仅用于配置迁移**：E0 的 `v0→v1` 迁移器会把它转成 `free_look_exit_keys` 数组；
+    /// 代码不再读取该字段（保留字段是为了旧 JSON 能被 serde 接受并交给迁移器）。
     #[serde(default = "default_free_look_exit_key")]
     pub free_look_exit_key: String,
+    /// free look 退出键（可多个，任一按下退出；为空时沿用旧字段迁移出的值）。
+    #[serde(default = "default_free_look_exit_keys")]
+    pub free_look_exit_keys: Vec<String>,
+    /// free look 恢复键（可多个，任一按下进入；为空则不单独提供恢复键）。
+    #[serde(default)]
+    pub free_look_enter_keys: Vec<String>,
+    /// 自由视角激活期间屏蔽的鼠标键（字符串形式，如 `"M-Left"`）。
+    /// **默认空列表**：默认不屏蔽任何键，由用户自行配置。
+    #[serde(default)]
+    pub free_look_blocked_mouse_buttons: Vec<String>,
+    /// 虚拟光标：默认不显示；启用后在自由视角激活时显示（普通模式不显示）。
+    #[serde(default)]
+    pub virtual_cursor_visible: bool,
+    /// 配置版本号，供兼容器使用；旧文件没有该字段时视为 0。
+    #[serde(default = "default_config_version")]
+    pub config_version: u32,
 }
 
 impl Default for LocalConfig {
@@ -206,6 +276,11 @@ impl Default for LocalConfig {
             free_look_enabled: false,
             free_look_effects: InputEffects::default(),
             free_look_exit_key: default_free_look_exit_key(),
+            free_look_exit_keys: default_free_look_exit_keys(),
+            free_look_enter_keys: Vec::new(),
+            free_look_blocked_mouse_buttons: Vec::new(),
+            virtual_cursor_visible: false,
+            config_version: CURRENT_CONFIG_VERSION,
         }
     }
 }
@@ -282,9 +357,20 @@ impl LocalConfig {
                 e
             )
         })?;
-        let config: LocalConfig = serde_json::from_str(&config_string)
+        let mut value: serde_json::Value = serde_json::from_str(&config_string)
+            .map_err(|e| format!("{}: {}", t!("localConfig.serializeConfigError"), e))?;
+        let original_version = value
+            .get("config_version")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let migrated = migrate_config(&mut value);
+        let config: LocalConfig = serde_json::from_value(value)
             .map_err(|e| format!("{}: {}", t!("localConfig.serializeConfigError"), e))?;
         *CONFIG.write().unwrap() = config;
+        // 老配置升级后立即写回，避免每次启动重复迁移。
+        if migrated && original_version < CURRENT_CONFIG_VERSION as u64 {
+            Self::save()?;
+        }
         Ok(())
     }
 
@@ -309,6 +395,26 @@ impl LocalConfig {
     /// free look 的输入效果（灵敏度 + 翻转）。每帧读取。
     pub fn free_look_effects() -> InputEffects {
         CONFIG.read().unwrap().free_look_effects
+    }
+
+    /// free look 退出键集合（可能多个）。每帧读取。
+    pub fn free_look_exit_keys() -> Vec<String> {
+        CONFIG.read().unwrap().free_look_exit_keys.clone()
+    }
+
+    /// free look 恢复键集合（可能多个）。每帧读取。
+    pub fn free_look_enter_keys() -> Vec<String> {
+        CONFIG.read().unwrap().free_look_enter_keys.clone()
+    }
+
+    /// 自由视角激活期间屏蔽的鼠标键（字符串集合）。每帧读取。
+    pub fn free_look_blocked_mouse_buttons() -> Vec<String> {
+        CONFIG.read().unwrap().free_look_blocked_mouse_buttons.clone()
+    }
+
+    /// 虚拟光标是否启用（默认不显示）。每帧读取。
+    pub fn virtual_cursor_visible() -> bool {
+        CONFIG.read().unwrap().virtual_cursor_visible
     }
 
     /// 灵敏度同时写两个轴的 scale（前端只有一个滑块）。
@@ -382,5 +488,71 @@ impl LocalConfig {
         (power_off_on_close, bool),
         (free_look_enabled, bool),
         (free_look_exit_key, String),
+        (free_look_exit_keys, Vec<String>),
+        (free_look_enter_keys, Vec<String>),
+        (free_look_blocked_mouse_buttons, Vec<String>),
+        (virtual_cursor_visible, bool),
     );
+}
+
+/// 配置版本迁移：按 `config_version` 逐级升级 JSON。
+///
+/// 返回是否执行了迁移。文件版本高于当前程序版本时**不迁移、不改写**，
+/// 避免用户在新版程序里用旧版程序打开时被降级破坏。
+pub fn migrate_config(value: &mut serde_json::Value) -> bool {
+    let Some(obj) = value.as_object_mut() else {
+        return false;
+    };
+    let version = obj
+        .get("config_version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if version > CURRENT_CONFIG_VERSION as u64 {
+        log::warn!(
+            "config.json 版本 {} 高于当前支持的 {}，跳过迁移",
+            version,
+            CURRENT_CONFIG_VERSION
+        );
+        return false;
+    }
+
+    let mut migrated = false;
+    if version < 1 {
+        migrate_v0_to_v1(obj);
+        migrated = true;
+    }
+    if migrated {
+        obj.insert(
+            "config_version".to_string(),
+            serde_json::Value::from(CURRENT_CONFIG_VERSION),
+        );
+    }
+    migrated
+}
+
+/// v0 → v1：
+/// - 单个 `free_look_exit_key` → `free_look_exit_keys` 数组（并删除旧键）；
+/// - 补齐 `free_look_enter_keys` / `free_look_blocked_mouse_buttons` / `virtual_cursor_visible`。
+fn migrate_v0_to_v1(obj: &mut serde_json::Map<String, serde_json::Value>) {
+    if obj.contains_key("free_look_exit_keys") {
+        // 新字段已存在，旧字段只是残留。
+        obj.remove("free_look_exit_key");
+    } else {
+        let keys = match obj.remove("free_look_exit_key") {
+            Some(serde_json::Value::String(key)) if !key.is_empty() => {
+                vec![serde_json::Value::String(key)]
+            }
+            _ => vec![serde_json::Value::String(default_free_look_exit_key())],
+        };
+        obj.insert(
+            "free_look_exit_keys".to_string(),
+            serde_json::Value::Array(keys),
+        );
+    }
+    obj.entry("free_look_enter_keys")
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+    obj.entry("free_look_blocked_mouse_buttons")
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+    obj.entry("virtual_cursor_visible")
+        .or_insert(serde_json::Value::Bool(false));
 }
