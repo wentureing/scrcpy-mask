@@ -139,6 +139,27 @@ mod uhid_config_tests {
         );
         assert_eq!(value["access_rules"], serde_json::json!([]));
     }
+
+    #[test]
+    fn prune_access_rules_drops_unknown_mapping_ids() {
+        let rules = vec![
+            AccessRule {
+                mapping_id: "a62a9ce3".to_string(),
+                when: "free_look_inactive".to_string(),
+                allow: false,
+            },
+            AccessRule {
+                mapping_id: "9".to_string(),
+                when: "normal".to_string(),
+                allow: false,
+            },
+        ];
+        let valid: std::collections::HashSet<String> =
+            ["a62a9ce3".to_string()].into_iter().collect();
+        let pruned = prune_access_rules(rules, &valid);
+        assert_eq!(pruned.len(), 1);
+        assert_eq!(pruned[0].mapping_id, "a62a9ce3");
+    }
 }
 
 fn default_web_bind_addr() -> Ipv4Addr {
@@ -404,11 +425,25 @@ impl LocalConfig {
         // 迁移需要知道"哪些映射绑定了哪些键"（把旧屏蔽列表转成规则）；读不到就传空表。
         let mapping_binds = read_active_mapping_binds();
         let migrated = migrate_config(&mut value, &mapping_binds);
-        let config: LocalConfig = serde_json::from_value(value)
+        let mut config: LocalConfig = serde_json::from_value(value)
             .map_err(|e| format!("{}: {}", t!("localConfig.serializeConfigError"), e))?;
+        // D：清理指向"当前映射文件里不存在"的规则（例如旧前端误存的 pointer 编号）。
+        let valid_ids: std::collections::HashSet<String> =
+            mapping_binds.keys().cloned().collect();
+        let before_rules = config.access_rules.len();
+        if !valid_ids.is_empty() {
+            config.access_rules = prune_access_rules(config.access_rules, &valid_ids);
+        }
+        let pruned = config.access_rules.len() != before_rules;
+        if pruned {
+            log::warn!(
+                "清理了 {} 条指向不存在映射的访问规则",
+                before_rules - config.access_rules.len()
+            );
+        }
         *CONFIG.write().unwrap() = config;
-        // 老配置升级后立即写回，避免每次启动重复迁移。
-        if migrated && original_version < CURRENT_CONFIG_VERSION as u64 {
+        // 老配置升级 / 规则被清理后立即写回，避免每次启动重复处理。
+        if pruned || (migrated && original_version < CURRENT_CONFIG_VERSION as u64) {
             Self::save()?;
         }
         Ok(())
@@ -539,6 +574,17 @@ impl LocalConfig {
         (access_rules, Vec<AccessRule>),
         (virtual_cursor_visible, bool),
     );
+}
+
+/// 移除指向"当前映射文件里不存在"的访问规则（防止旧 UI 误存的 pointer 编号长期残留）。
+pub fn prune_access_rules(
+    rules: Vec<AccessRule>,
+    valid_ids: &std::collections::HashSet<String>,
+) -> Vec<AccessRule> {
+    rules
+        .into_iter()
+        .filter(|rule| valid_ids.contains(&rule.mapping_id))
+        .collect()
 }
 
 /// 读取当前映射文件里"映射 id → 绑定的输入字符串"。
