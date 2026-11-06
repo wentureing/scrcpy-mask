@@ -69,8 +69,14 @@ export interface LocalConfigState {
     scale_x: number;
     scale_y?: number;
   };
-  /** free look 退出键（Bevy KeyCode 名称，默认 ControlLeft）。 */
-  freeLookExitKey: string;
+  /** free look 退出键（可多个，任一按下退出；Bevy KeyCode 名称）。 */
+  freeLookExitKeys: string[];
+  /** free look 恢复键（可多个，任一按下进入）。 */
+  freeLookEnterKeys: string[];
+  /** 自由视角激活期间屏蔽的鼠标键（如 "M-Left"）；默认空，不屏蔽任何键。 */
+  freeLookBlockedMouseButtons: string[];
+  /** 虚拟光标：默认不显示；启用后在自由视角激活时显示。 */
+  virtualCursorVisible: boolean;
   // language
   language: string;
   // clipboard sync
@@ -115,7 +121,10 @@ const initialState: LocalConfigState = {
   mappingLabelOpacity: 0,
   freeLookEnabled: false,
   freeLookEffects: { invert_x: false, invert_y: false, scale_x: 1, scale_y: 1 },
-  freeLookExitKey: "ControlLeft",
+  freeLookExitKeys: ["ControlLeft"],
+  freeLookEnterKeys: [],
+  freeLookBlockedMouseButtons: [],
+  virtualCursorVisible: false,
   language: "en-US",
   clipboardSync: true,
   touchBackend: "sdk",

@@ -782,23 +782,89 @@ async fn update_config(
             return Err(WebServerError::bad_request("free_look_invert_y must be bool"));
         }
         "free_look_exit_key" => {
+            // 兼容旧前端：单个字符串视为单元素数组，走同一套校验。
             if let Some(value) = payload.value.as_str() {
-                let key = value.trim().to_string();
-                if key.is_empty() {
-                    return Err(WebServerError::bad_request("free_look_exit_key 不能为空"));
-                }
-                // D10：退出键与已有映射冲突时提示更换，并且该设置不生效（不落盘）。
-                if free_look_exit_key_conflicts(&key) {
-                    return Err(WebServerError::bad_request(format!(
-                        "按键 {} 已被当前映射使用，请更换退出键",
-                        key
-                    )));
-                }
-                LocalConfig::set_free_look_exit_key(key.clone());
-                return Ok(JsonResponse::success(format!("退出键已设为 {}", key), None));
+                let keys = validate_free_look_keys(
+                    "free_look_exit_keys",
+                    vec![value.trim().to_string()],
+                    &[],
+                    &[],
+                    false,
+                )?;
+                LocalConfig::set_free_look_exit_keys(keys.clone());
+                return Ok(JsonResponse::success(
+                    format!("退出键已设为 {:?}", keys),
+                    None,
+                ));
             }
             return Err(WebServerError::bad_request(
                 "free_look_exit_key must be string",
+            ));
+        }
+        "free_look_exit_keys" => {
+            let Some(value) = payload.value.as_array() else {
+                return Err(WebServerError::bad_request(
+                    "free_look_exit_keys must be an array of strings",
+                ));
+            };
+            let keys = json_string_list("free_look_exit_keys", value)?;
+            let keys = validate_free_look_keys(
+                "free_look_exit_keys",
+                keys,
+                &LocalConfig::free_look_enter_keys(),
+                &LocalConfig::free_look_blocked_mouse_buttons(),
+                false,
+            )?;
+            LocalConfig::set_free_look_exit_keys(keys.clone());
+            return Ok(JsonResponse::success(
+                format!("退出键已设为 {:?}", keys),
+                None,
+            ));
+        }
+        "free_look_enter_keys" => {
+            let Some(value) = payload.value.as_array() else {
+                return Err(WebServerError::bad_request(
+                    "free_look_enter_keys must be an array of strings",
+                ));
+            };
+            let keys = json_string_list("free_look_enter_keys", value)?;
+            let keys = validate_free_look_keys(
+                "free_look_enter_keys",
+                keys,
+                &LocalConfig::free_look_exit_keys(),
+                &LocalConfig::free_look_blocked_mouse_buttons(),
+                true,
+            )?;
+            LocalConfig::set_free_look_enter_keys(keys.clone());
+            return Ok(JsonResponse::success(
+                format!("恢复键已设为 {:?}", keys),
+                None,
+            ));
+        }
+        "free_look_blocked_mouse_buttons" => {
+            let Some(value) = payload.value.as_array() else {
+                return Err(WebServerError::bad_request(
+                    "free_look_blocked_mouse_buttons must be an array of strings",
+                ));
+            };
+            let keys = json_string_list("free_look_blocked_mouse_buttons", value)?;
+            let keys = validate_free_look_blocked_keys(keys)?;
+            LocalConfig::set_free_look_blocked_mouse_buttons(keys.clone());
+            return Ok(JsonResponse::success(
+                format!("屏蔽鼠标键已设为 {:?}", keys),
+                None,
+            ));
+        }
+        "virtual_cursor_visible" => {
+            if let Some(value) = payload.value.as_bool() {
+                LocalConfig::set_virtual_cursor_visible(value);
+                return Ok(JsonResponse::success(
+                    format!("虚拟光标: {}", value),
+                    None,
+                ));
+            }
+            return Err(WebServerError::bad_request(
+                "virtual_cursor_visible must be bool",
             ));
         }
         _ => Err(WebServerError::bad_request(format!(
@@ -839,4 +905,87 @@ fn json_contains_string(value: &serde_json::Value, needle: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// 把 JSON 数组转成去重后的字符串列表（空字符串忽略）。
+fn json_string_list(
+    field: &str,
+    value: &[serde_json::Value],
+) -> Result<Vec<String>, WebServerError> {
+    let mut out: Vec<String> = Vec::new();
+    for item in value {
+        let Some(text) = item.as_str() else {
+            return Err(WebServerError::bad_request(format!(
+                "{} 的每一项都必须是字符串",
+                field
+            )));
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !out.iter().any(|v| v == text) {
+            out.push(text.to_string());
+        }
+    }
+    Ok(out)
+}
+
+/// 校验退出键/恢复键列表：
+/// - 必须是设置页支持的键名；
+/// - 不能与另一组重复；
+/// - 不能与屏蔽列表重叠（用户明确要求"提醒避免这种情况"）；
+/// - 不能已被当前映射占用。
+fn validate_free_look_keys(
+    field: &str,
+    keys: Vec<String>,
+    other: &[String],
+    blocked: &[String],
+    allow_empty: bool,
+) -> Result<Vec<String>, WebServerError> {
+    if keys.is_empty() && !allow_empty {
+        return Err(WebServerError::bad_request(format!("{} 不能为空", field)));
+    }
+    for key in &keys {
+        if crate::mask::mapping::free_look::parse_key(key).is_none() {
+            return Err(WebServerError::bad_request(format!(
+                "{} 不支持按键 {}",
+                field, key
+            )));
+        }
+        if other.iter().any(|v| v == key) {
+            return Err(WebServerError::bad_request(format!(
+                "按键 {} 同时出现在退出键和恢复键里，请只保留一个",
+                key
+            )));
+        }
+        if blocked.iter().any(|v| v == key) {
+            return Err(WebServerError::bad_request(format!(
+                "按键 {} 同时是退出/恢复键与屏蔽键，请更换其中一个",
+                key
+            )));
+        }
+        if free_look_exit_key_conflicts(key) {
+            return Err(WebServerError::bad_request(format!(
+                "按键 {} 已被当前映射使用，请更换",
+                key
+            )));
+        }
+    }
+    Ok(keys)
+}
+
+/// 屏蔽列表只接受鼠标键（`M-Left` 这类），避免误把键盘键填进来。
+fn validate_free_look_blocked_keys(
+    keys: Vec<String>,
+) -> Result<Vec<String>, WebServerError> {
+    for key in &keys {
+        if !key.starts_with("M-") {
+            return Err(WebServerError::bad_request(format!(
+                "屏蔽列表只接受鼠标键（形如 M-Left），收到 {}",
+                key
+            )));
+        }
+    }
+    Ok(keys)
 }

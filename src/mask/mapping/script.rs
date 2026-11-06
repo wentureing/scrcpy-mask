@@ -20,6 +20,7 @@ use crate::{
             MappingState,
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
+            free_look,
             cursor::{CursorPosition, CursorState},
             script_helper::{
                 ScriptAST, ScriptRuntimeCommand, ScriptRuntimeCommandReceiver,
@@ -179,6 +180,7 @@ pub fn handle_script(
     shared_state: Res<ScriptSharedState>,
     runtime: ResMut<TokioTasksRuntime>,
     mut active_map: ResMut<ActiveScriptMap>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -192,8 +194,13 @@ pub fn handle_script(
                 let raw_input_flag = mapping_state.get() == &MappingState::RawInput;
                 let fps_mode_flag = cursor_state.get() == &CursorState::Fps;
                 let interval = Duration::from_millis(mapping.interval as u64);
+                // 自由视角激活时若该映射绑定了被屏蔽的鼠标键，则不触发脚本。
+                let blocked = free_look::is_blocked_in_free_look(
+                    &mapping.bind,
+                    free_look.is_active(),
+                );
 
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous()) && !blocked {
                     if !mapping.pressed_script_ast.empty {
                         let ast = mapping.pressed_script_ast.clone();
                         let shared_state = shared_state.as_ref().clone();

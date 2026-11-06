@@ -19,6 +19,7 @@ use crate::{
             MappingState,
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
+            free_look,
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
@@ -287,12 +288,18 @@ pub fn handle_observation(
     mut active_map: ResMut<ActiveObservationMap>,
     mut lifecycle_state: ResMut<ObservationLifecycleState>,
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Observation") {
                 let mapping = mapping.as_ref_observation();
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let capture_owner = observation_capture_owner(action.as_ref());
                     let capture_requested = cursor_state.get() != &CursorState::Fps;

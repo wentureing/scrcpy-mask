@@ -108,7 +108,7 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
-  // free look 退出键候选（后端 exit_keycode 只识别这些名称，见 free_look.rs）
+  // free look 退出/恢复键候选（后端 parse_key 只识别这些名称，见 free_look.rs）
   const freeLookExitKeyOptions = [
     { value: "ControlLeft", label: t("settings.freeLookExitCtrlLeft") },
     { value: "ControlRight", label: t("settings.freeLookExitCtrlRight") },
@@ -122,6 +122,15 @@ export default function Settings() {
     { value: "KeyG", label: "G" },
     { value: "KeyV", label: "V" },
     { value: "Backquote", label: "`" },
+  ];
+
+  // 自由视角激活期间可屏蔽的鼠标键（默认空 = 不屏蔽任何键）
+  const freeLookMouseButtonOptions = [
+    { value: "M-Left", label: t("settings.mouseLeft") },
+    { value: "M-Right", label: t("settings.mouseRight") },
+    { value: "M-Middle", label: t("settings.mouseMiddle") },
+    { value: "M-Back", label: t("settings.mouseBack") },
+    { value: "M-Forward", label: t("settings.mouseForward") },
   ];
 
   // 端口被占用时后端会静默顺延到下一个端口，这里把那条提示显示出来（读后即清空）。
@@ -162,13 +171,45 @@ export default function Settings() {
 
   // 退出键冲突时后端会拒绝保存（D10），所以这里不走乐观更新：
   // 先请求，成功后再回填 store，失败则保留旧值并提示。
-  async function changeFreeLookExitKey(value: string) {
+  async function changeFreeLookKeys(
+    key: "free_look_exit_keys" | "free_look_enter_keys",
+    value: string[],
+  ) {
+    try {
+      const res = await requestPost("/api/config/update_config", { key, value });
+      const patch =
+        key === "free_look_exit_keys"
+          ? { free_look_exit_keys: value }
+          : { free_look_enter_keys: value };
+      dispatch(forceSetLocalConfig(patch));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
+  async function changeFreeLookBlockedButtons(value: string[]) {
     try {
       const res = await requestPost("/api/config/update_config", {
-        key: "free_look_exit_key",
+        key: "free_look_blocked_mouse_buttons",
         value,
       });
-      dispatch(forceSetLocalConfig({ free_look_exit_key: value }));
+      dispatch(
+        forceSetLocalConfig({ free_look_blocked_mouse_buttons: value }),
+      );
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
+  async function changeVirtualCursorVisible(value: boolean) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "virtual_cursor_visible",
+        value,
+      });
+      dispatch(forceSetLocalConfig({ virtual_cursor_visible: value }));
       messageApi?.success(res.message);
     } catch (err: unknown) {
       messageApi?.error(String(err));
@@ -339,9 +380,43 @@ export default function Settings() {
           >
             <Select
               className="w-sm"
-              value={localConfig.freeLookExitKey ?? "ControlLeft"}
+              mode="multiple"
+              value={localConfig.freeLookExitKeys ?? []}
               options={freeLookExitKeyOptions}
-              onChange={changeFreeLookExitKey}
+              onChange={(v) => changeFreeLookKeys("free_look_exit_keys", v)}
+            />
+          </SettingBox>
+          <SettingBox
+            label={t("settings.freeLookEnterKeys")}
+            tooltip={t("settings.freeLookEnterKeysTip")}
+          >
+            <Select
+              className="w-sm"
+              mode="multiple"
+              value={localConfig.freeLookEnterKeys ?? []}
+              options={freeLookExitKeyOptions}
+              onChange={(v) => changeFreeLookKeys("free_look_enter_keys", v)}
+            />
+          </SettingBox>
+          <SettingBox
+            label={t("settings.freeLookBlockedButtons")}
+            tooltip={t("settings.freeLookBlockedButtonsTip")}
+          >
+            <Select
+              className="w-sm"
+              mode="multiple"
+              value={localConfig.freeLookBlockedMouseButtons ?? []}
+              options={freeLookMouseButtonOptions}
+              onChange={changeFreeLookBlockedButtons}
+            />
+          </SettingBox>
+          <SettingBox
+            label={t("settings.virtualCursor")}
+            tooltip={t("settings.virtualCursorTip")}
+          >
+            <Switch
+              checked={localConfig.virtualCursorVisible ?? false}
+              onChange={changeVirtualCursorVisible}
             />
           </SettingBox>
           <SettingBox label={t("settings.horizontalMaskWidth")}>

@@ -25,6 +25,7 @@ use crate::mask::mapping::{
     cast_spell::{ActiveCastSpell, cancel_active_cast_with_completion, release_active_cast},
     config::{ActiveMappingConfig, BindMappingType},
     cursor::{ActiveCursorFpsConfig, CursorPosition, CursorState, NormalCursorCapture},
+    free_look,
     direction_pad::BlockDirectionPad,
     fire::{
         ActiveFireMap, enter_fps_mode, exit_fps_mode, spawn_fire_after_hooks_for_external_release,
@@ -43,6 +44,12 @@ pub enum ScriptRuntimeCommand {
         ack: oneshot::Sender<Result<(), String>>,
     },
     ExitFps {
+        ack: oneshot::Sender<Result<(), String>>,
+    },
+    EnterFreeLook {
+        ack: oneshot::Sender<Result<(), String>>,
+    },
+    ExitFreeLook {
         ack: oneshot::Sender<Result<(), String>>,
     },
     EnterRawInput {
@@ -295,6 +302,7 @@ pub fn handle_script_runtime_commands(
     mut next_mapping_state: ResMut<NextState<MappingState>>,
     runtime: ResMut<TokioTasksRuntime>,
     mut cast_params: ScriptRuntimeCastParams,
+    mut free_look_state: ResMut<free_look::FreeLookState>,
 ) {
     for command in command_rx.0.try_iter() {
         match command {
@@ -375,6 +383,24 @@ pub fn handle_script_runtime_commands(
                         );
                     }
                 }
+                ack_after_next_update(&runtime, ack, Ok(()));
+            }
+            ScriptRuntimeCommand::EnterFreeLook { ack } => {
+                if free_look_state.is_active() {
+                    ack_immediately(ack, Ok(()));
+                    continue;
+                }
+                free_look_state.set_active(true);
+                free_look::enter(&mut *cast_params.normal_cursor_capture);
+                ack_after_next_update(&runtime, ack, Ok(()));
+            }
+            ScriptRuntimeCommand::ExitFreeLook { ack } => {
+                if !free_look_state.is_active() {
+                    ack_immediately(ack, Ok(()));
+                    continue;
+                }
+                free_look_state.set_active(false);
+                free_look::exit(&mut *cast_params.normal_cursor_capture);
                 ack_after_next_update(&runtime, ack, Ok(()));
             }
             ScriptRuntimeCommand::EnterRawInput { ack } => {
@@ -2139,6 +2165,9 @@ impl ScriptAST {
             "exit_fps" => exit_fps_func(ctx, source, span, args).await,
             "enter_raw_input" => enter_raw_input_func(ctx, source, span, args).await,
             "exit_raw_input" => exit_raw_input_func(ctx, source, span, args).await,
+            "enter_free_look" => enter_free_look_func(ctx, source, span, args).await,
+            "exit_free_look" => exit_free_look_func(ctx, source, span, args).await,
+            "free_look_active" => free_look_active_func(ctx, source, span, args).await,
             "cancel_cast" => cancel_cast_func(ctx, source, span, args).await,
             "release_cast" => release_cast_func(ctx, source, span, args).await,
             _ => Err(ScriptError::from_span(
@@ -2488,7 +2517,14 @@ impl<'a> ScriptAnalyzer<'a> {
                 self.expect_non_empty_string(args, 0, name, span);
                 ExprInfo::new(StaticType::Bool)
             }
-            "state_clear" | "exit_fps" | "enter_raw_input" | "exit_raw_input" | "release_cast" => {
+            "state_clear"
+            | "exit_fps"
+            | "enter_raw_input"
+            | "exit_raw_input"
+            | "release_cast"
+            | "enter_free_look"
+            | "exit_free_look"
+            | "free_look_active" => {
                 self.expect_arity(name, args.len(), 0, Some(0), span);
                 ExprInfo::new(StaticType::Int)
             }
@@ -3047,6 +3083,49 @@ async fn exit_raw_input_func(
         ScriptRuntimeCommand::ExitRawInput { ack }
     })
     .await
+}
+
+async fn enter_free_look_func(
+    ctx: &ScriptFuncContext<'_>,
+    source: &str,
+    span: &SourceSpan,
+    args: &[Value],
+) -> Result<Value, ScriptError> {
+    expect_no_args_func(source, span, args, "enter_free_look")?;
+    execute_runtime_command(source, span, ctx, |ack| {
+        ScriptRuntimeCommand::EnterFreeLook { ack }
+    })
+    .await
+}
+
+async fn exit_free_look_func(
+    ctx: &ScriptFuncContext<'_>,
+    source: &str,
+    span: &SourceSpan,
+    args: &[Value],
+) -> Result<Value, ScriptError> {
+    expect_no_args_func(source, span, args, "exit_free_look")?;
+    execute_runtime_command(source, span, ctx, |ack| {
+        ScriptRuntimeCommand::ExitFreeLook { ack }
+    })
+    .await
+}
+
+/// `free_look_active()`：返回 1 表示当前处于自由视角，0 表示未激活。
+///
+/// 脚本在异步任务里执行、拿不到 Bevy 资源，这里读取全局原子快照（见 `free_look.rs`）。
+async fn free_look_active_func(
+    _ctx: &ScriptFuncContext<'_>,
+    source: &str,
+    span: &SourceSpan,
+    args: &[Value],
+) -> Result<Value, ScriptError> {
+    expect_no_args_func(source, span, args, "free_look_active")?;
+    Ok(Value::Int(if free_look::is_active_global() {
+        1
+    } else {
+        0
+    }))
 }
 
 async fn cancel_cast_func(

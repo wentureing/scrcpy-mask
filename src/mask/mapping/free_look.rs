@@ -15,6 +15,7 @@ use bevy::{
     prelude::*,
     window::Window,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{
     config::LocalConfig,
@@ -43,6 +44,27 @@ const FREE_LOOK_MAX_RADIUS_RATIO: f32 = 0.28;
 /// 光标捕获的所有者标识（与 Observation 的 owner 区分开）。
 const FREE_LOOK_CAPTURE_OWNER: &str = "FreeLook";
 
+/// 全局"自由视角是否激活"快照。
+///
+/// 脚本在异步任务里执行、拿不到 Bevy 资源，`free_look_active()` 通过它读取；
+/// 只存一个 bool，用 Relaxed 就够（不需要跨线程的严格顺序）。
+static FREE_LOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// 当前是否处于自由视角激活状态（供脚本使用）。
+pub fn is_active_global() -> bool {
+    FREE_LOOK_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// 进入自由视角：请求锁光标。
+pub fn enter(capture: &mut NormalCursorCapture) {
+    capture.request(FREE_LOOK_CAPTURE_OWNER);
+}
+
+/// 退出自由视角：释放光标捕获。
+pub fn exit(capture: &mut NormalCursorCapture) {
+    capture.release(FREE_LOOK_CAPTURE_OWNER);
+}
+
 #[derive(Resource)]
 pub struct FreeLookState {
     /// 手势脉冲状态机（Down → Move → Up 分帧推进），见 `touch_pulse.rs`。
@@ -55,6 +77,12 @@ impl FreeLookState {
     /// 是否处于激活（锁光标）状态。`cursor.rs` 用它暂停屏幕触控点击。
     pub fn is_active(&self) -> bool {
         self.active
+    }
+
+    /// 切换激活状态，并同步给脚本可读的全局快照。
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
+        FREE_LOOK_ACTIVE.store(active, Ordering::Relaxed);
     }
 }
 
@@ -74,7 +102,8 @@ impl Default for FreeLookState {
 /// 配置里的键名 → Bevy `KeyCode`。
 ///
 /// 只覆盖设置页提供的选项；未知键返回 `None`（忽略，避免误触）。
-fn parse_key(name: &str) -> Option<KeyCode> {
+/// 也供 web 配置接口做键名校验。
+pub fn parse_key(name: &str) -> Option<KeyCode> {
     Some(match name {
         "ControlLeft" => KeyCode::ControlLeft,
         "ControlRight" => KeyCode::ControlRight,
@@ -153,8 +182,8 @@ pub fn cleanup_free_look_on_stop(
     mut capture: ResMut<NormalCursorCapture>,
     mut state: ResMut<FreeLookState>,
 ) {
-    state.active = false;
-    capture.release(FREE_LOOK_CAPTURE_OWNER);
+    state.set_active(false);
+    exit(&mut capture);
     state.pulse.release(&cs_tx_res, mask_size.0);
 }
 
@@ -200,8 +229,8 @@ pub fn handle_free_look(
             state.pulse.release(&cs_tx_res, size);
         }
     } else if (exit_pressed || enter_pressed) && active_mapping.0.is_some() {
-        state.active = true;
-        capture.request(FREE_LOOK_CAPTURE_OWNER);
+        state.set_active(true);
+        enter(&mut capture);
     }
 
     if !state.active {

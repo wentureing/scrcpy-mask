@@ -28,13 +28,13 @@ export default function FreeLookEntry() {
   const [open, setOpen] = useState(false);
 
   // 退出键冲突时后端会拒绝保存（D10），所以成功后才回填 store。
-  async function changeExitKey(value: string) {
+  async function changeExitKeys(value: string[]) {
     try {
       const res = await requestPost("/api/config/update_config", {
-        key: "free_look_exit_key",
+        key: "free_look_exit_keys",
         value,
       });
-      dispatch(forceSetLocalConfig({ free_look_exit_key: value }));
+      dispatch(forceSetLocalConfig({ free_look_exit_keys: value }));
       messageApi?.success(res.message);
     } catch (err: unknown) {
       messageApi?.error(String(err));
@@ -136,9 +136,10 @@ export default function FreeLookEntry() {
             >
               <Select
                 className="w-full"
-                value={localConfig.freeLookExitKey ?? "ControlLeft"}
+                mode="multiple"
+                value={localConfig.freeLookExitKeys ?? []}
                 options={exitKeyOptions}
-                onChange={changeExitKey}
+                onChange={changeExitKeys}
               />
             </ItemBox>
           </ItemBoxContainer>

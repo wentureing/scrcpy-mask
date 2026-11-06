@@ -19,6 +19,7 @@ use crate::{
         MappingState,
         binding::{ButtonBinding, ValidateMappingConfig},
         config::ActiveMappingConfig,
+        free_look,
         cursor::{CursorPosition, CursorState},
         executor::{
             MappingExecutionError, MappingLifecycleStart, MappingLifecycleState,
@@ -216,13 +217,19 @@ pub fn handle_single_tap(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     mut lifecycle_state: ResMut<SingleTapLifecycleState>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("SingleTap") {
                 let original_size: Vec2 = active_mapping.original_size.into();
                 let mapping = mapping.as_ref_singletap();
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     if mapping.sync {
                         if single_tap_has_before_hook(mapping) {
                             let action = action.to_string();
@@ -593,12 +600,18 @@ pub fn handle_repeat_tap(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     mut lifecycle_state: ResMut<RepeatTapLifecycleState>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("RepeatTap") {
                 let mapping = mapping.as_ref_repeattap();
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if repeat_tap_has_before_hook(mapping) {
                         let action = action.to_string();
@@ -828,12 +841,18 @@ pub fn handle_multiple_tap(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("MultipleTap") {
                 let mapping = mapping.as_ref_multipletap();
-                if ineffable.just_pulsed(action.ineff_pulse()) {
+                if ineffable.just_pulsed(action.ineff_pulse())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let pointer_id = mapping.pointer_id;
                     let items = mapping.items.clone();

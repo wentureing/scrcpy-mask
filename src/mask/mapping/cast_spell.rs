@@ -27,6 +27,7 @@ use crate::{
             config::{ActiveMappingConfig, BindMappingConfig, BindMappingType, MappingAction},
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
             direction_pad::{BlockDirectionPad, DirectionPadMap},
+            free_look,
             executor::{
                 MappingExecutionContext, MappingExecutionError, MappingLifecycleStart,
                 MappingLifecycleState, make_mapping_execution_context, run_script_hook,
@@ -682,12 +683,18 @@ pub fn handle_mouse_cast_spell(
     mut block_direction_pad: ResMut<BlockDirectionPad>,
     mut lifecycle_state: ResMut<MouseCastSpellLifecycleState>,
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("MouseCastSpell") {
                 let mapping = mapping.as_ref_mousecastspell();
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     let cur_cursor_pos = cursor_pos.0;
                     let cur_mask_size = mask_size.0;
                     let capture_owner = mouse_cast_capture_owner(action.as_ref());
@@ -1291,12 +1298,22 @@ pub fn handle_pad_cast_spell(
     mut block_direction_pad: ResMut<BlockDirectionPad>,
     mut lifecycle_state: ResMut<PadCastSpellLifecycleState>,
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("PadCastSpell") {
                 let mapping = mapping.as_ref_padcastspell();
-                if ineffable.just_activated(action.ineff_continuous()) {
+                if ineffable.just_activated(action.ineff_continuous())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                    && !free_look::is_blocked_direction(
+                        &mapping.pad_bind,
+                        free_look.is_active(),
+                    )
+                {
                     if pad_cast_has_before_hook(mapping) {
                         let action = action.to_string();
                         let version = lifecycle_state.0.begin_start(&action);
@@ -1684,12 +1701,18 @@ pub fn handle_cancel_cast(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
+    free_look: Res<free_look::FreeLookState>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("CancelCast") {
                 let mapping = mapping.as_ref_cancelcast();
-                if ineffable.just_pulsed(action.ineff_pulse()) {
+                if ineffable.just_pulsed(action.ineff_pulse())
+                    && !free_look::is_blocked_in_free_look(
+                        &mapping.bind,
+                        free_look.is_active(),
+                    )
+                {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let mapping_id = mapping.id.clone();
                     let hooks = mapping.script_hooks.clone();
