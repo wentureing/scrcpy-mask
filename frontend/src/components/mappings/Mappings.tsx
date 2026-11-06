@@ -45,11 +45,13 @@ import {
   PushpinFilled,
   PushpinOutlined,
   RollbackOutlined,
+  SafetyOutlined,
   SaveOutlined,
   SettingOutlined,
   SnippetsOutlined,
 } from "@ant-design/icons";
 import IconButton from "../common/IconButton";
+import AccessRulesEditor from "../common/AccessRulesEditor";
 import {
   type ApiError,
   deepClone,
@@ -902,6 +904,7 @@ export default function Mappings() {
 
   const [displayedMappingFile, setDisplayedMappingFile] = useState("");
   const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [mappingList, setMappingList] = useState<MappingFileInfo[]>([]);
   const [showAllMappingGuides, setShowAllMappingGuides] = useState(false);
@@ -1232,6 +1235,16 @@ export default function Mappings() {
         onMigrateAction={migrateMappingFile}
         onPinAction={setMappingPin}
       />
+      <Modal
+        title={t("mappings.home.accessControl")}
+        width={860}
+        open={isAccessControlOpen}
+        onCancel={() => setIsAccessControlOpen(false)}
+        footer={null}
+        destroyOnHidden
+      >
+        <AccessRulesEditor />
+      </Modal>
       <section>
         <Flex justify="space-between" align="center">
           <Space.Compact>
@@ -1279,6 +1292,13 @@ export default function Mappings() {
               onClick={() => setIsManagerOpen(true)}
             >
               {t("mappings.home.manage")}
+            </Button>
+            <Button
+              type="primary"
+              icon={<SafetyOutlined />}
+              onClick={() => setIsAccessControlOpen(true)}
+            >
+              {t("mappings.home.accessControl")}
             </Button>
           </Space.Compact>
         </Flex>

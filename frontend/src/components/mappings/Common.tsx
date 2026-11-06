@@ -43,15 +43,23 @@ import { useAppSelector } from "../../store/store";
 import { useRefreshBackgroundImage } from "../../hooks";
 import { formatBindingName, mappingModalDragFactory } from "./tools";
 import { ScriptEditor } from "./ScriptEditor";
+import AccessRulesEditor from "../common/AccessRulesEditor";
 
 const MOUSE_BUTTONS = ["M-Left", "M-Middle", "M-Right", "M-Back", "M-Forward"];
 
 type SettingModalProps = PropsWithChildren<{
   open: boolean;
   onClose: () => void;
+  /** 传了 = 在弹窗底部显示该映射的访问规则（docs/29） */
+  mappingId?: string;
 }>;
 
-export function SettingModal({ children, open, onClose }: SettingModalProps) {
+export function SettingModal({
+  children,
+  open,
+  onClose,
+  mappingId,
+}: SettingModalProps) {
   const handleDrag = mappingModalDragFactory()
   return (
     <Modal
@@ -67,6 +75,7 @@ export function SettingModal({ children, open, onClose }: SettingModalProps) {
         onMouseDown={handleDrag}
       />
       {children}
+      {mappingId && <AccessRulesEditor mappingId={mappingId} compact />}
     </Modal>
   );
 }

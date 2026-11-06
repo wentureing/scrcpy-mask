@@ -187,7 +187,7 @@ export default function ButtonPadCastSpell({
 
   return (
     <>
-      <SettingModal open={showSetting} onClose={() => setShowSetting(false)}>
+      <SettingModal open={showSetting} onClose={() => setShowSetting(false)} mappingId={config.id}>
         <Setting
           config={config}
           onConfigChange={onConfigChange}

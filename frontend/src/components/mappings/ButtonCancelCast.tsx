@@ -91,7 +91,7 @@ export default function ButtonCancelCast({
 
   return (
     <>
-      <SettingModal open={showSetting} onClose={() => setShowSetting(false)}>
+      <SettingModal open={showSetting} onClose={() => setShowSetting(false)} mappingId={config.id}>
         <Setting
           config={config}
           onConfigChange={onConfigChange}
