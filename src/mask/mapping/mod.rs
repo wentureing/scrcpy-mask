@@ -1,4 +1,3 @@
-pub mod behavior;
 pub mod binding;
 pub mod cast_spell;
 pub mod config;
@@ -8,6 +7,7 @@ pub mod effects;
 pub mod executor;
 pub mod fire;
 pub mod free_look;
+pub mod human_gesture;
 pub mod observation;
 pub mod pipeline;
 pub mod raw_input;

@@ -9,6 +9,8 @@ import type {
 } from "./mapping";
 import { Flex, InputNumber, Select, Switch, Tooltip, Typography } from "antd";
 import {
+  formatAxisName,
+  formatBindingName,
   mappingButtonDragFactory,
   mappingButtonPresetStyle,
   mappingButtonTransformStyle,
@@ -47,13 +49,14 @@ function BindText({ text }: { text: string }) {
 }
 
 function PadCastSpellContent({ padBind, bind }: PadCastSpellContentProps) {
-  const bindText = bind.join("+");
+  // 圈内显示中文（用例 11）：绑定键统一走 formatBindingName，避免出现 KeyW 这类英文。
+  const bindText = bind.map((b) => formatBindingName(b)).join(" + ");
   if (padBind.type === "Button") {
     const padBindTexts = {
-      up: padBind.up.join("+"),
-      down: padBind.down.join("+"),
-      left: padBind.left.join("+"),
-      right: padBind.right.join("+"),
+      up: padBind.up.map((b) => formatBindingName(b)).join(" + "),
+      down: padBind.down.map((b) => formatBindingName(b)).join(" + "),
+      left: padBind.left.map((b) => formatBindingName(b)).join(" + "),
+      right: padBind.right.map((b) => formatBindingName(b)).join(" + "),
     };
 
     return (
@@ -88,9 +91,9 @@ function PadCastSpellContent({ padBind, bind }: PadCastSpellContentProps) {
     return (
       <>
         <Flex vertical gap={8}>
-          <BindText text={padBind.x} />
+          <BindText text={formatAxisName(padBind.x)} />
           <BindText text={bindText} />
-          <BindText text={padBind.y} />
+          <BindText text={formatAxisName(padBind.y)} />
         </Flex>
       </>
     );

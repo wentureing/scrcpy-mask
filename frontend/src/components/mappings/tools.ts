@@ -110,6 +110,21 @@ export function formatMappingType(type: string): string {
   return MAPPING_TYPE_ZH[type] ?? type;
 }
 
+/** 手柄轴的中文名（圈内显示用，避免出现 LeftStickX 这类英文） */
+const AXIS_ZH: Record<string, string> = {
+  LeftStickX: "左摇杆X",
+  LeftStickY: "左摇杆Y",
+  RightStickX: "右摇杆X",
+  RightStickY: "右摇杆Y",
+  LeftZ: "左扳机",
+  RightZ: "右扳机",
+};
+
+/** 手柄轴 → 中文显示名（未知轴原样返回） */
+export function formatAxisName(name: string): string {
+  return AXIS_ZH[name] ?? name;
+}
+
 /**
  * 把绑定值（如 "M-Left"、"KeyW"）转成当前语言的显示名。
  * - 中文环境显示“鼠标左键 / W 键”等；

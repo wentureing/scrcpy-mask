@@ -1,10 +1,20 @@
-//! 每按钮专属配置层（层②）：描述"这只按钮该怎么动"。
+//! 人类手势路径模仿器（`HumanGestureImitator`）：描述"一次操作该怎么像人手一样动"。
 //!
-//! 目标（见 docs/12）：把散落在各 `BindMapping*` 里的灵敏度、随机化、脚本、
-//! 初始缓动等，逐步收敛成统一的 `ButtonBehavior`，并且**缺省即旧行为**。
+//! 定位（`docs/22` §22.14）：映射的**可选配置/工具**，不是必用核心层。
+//! 启用后，一般点击/按键改写成 `<起点, 终点>` 描述，由模仿器生成：
+//! - **过渡段**：起点 → 终点的插值（时长可调）；
+//! - **稳态**：到达终点后的随机抖动；
+//! - **结束段**：可选"过渡回中性"（默认关闭，强化跟手）。
 //!
-//! 当前状态：只定义数据结构与默认值，尚未接入执行路径（`#[allow(dead_code)]`）。
-//! 接入顺序：S3 先接 `motion.sequence`，S4 再接 `humanize`。
+//! 例：按下 W → 虚拟摇杆从中心过渡到前进位（过渡段），到位后轻微抖动（稳态）。
+//! 瞬时操作（单击）不需要 `<起点,终点>`，只做抖动。
+//!
+//! 当前状态：**只定义了数据结构与默认值，尚未接入执行路径**（`#![allow(dead_code)]`）。
+//! 接线计划见 `docs/21` S8b（`P8`）；与 `pipeline.rs`（意图发送器）的分工见 `docs/22` §22.19.9：
+//! **本模块决定"怎么动"，`pipeline` 决定"怎么发"**。
+//!
+//! 说明：原文件名为 `behavior.rs`、类型为 `ButtonBehavior`，按用户定义改名
+//! （`docs/21` P5 / `docs/22` §22.19 D22），纯改名，不动逻辑。
 
 #![allow(dead_code)]
 
@@ -47,14 +57,17 @@ pub struct SequenceStep {
     pub ease: EaseKind,
 }
 
-/// 轨迹配置
+/// 轨迹配置：过渡段（起点 → 终点）怎么走
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MotionProfile {
     pub mode: MotionMode,
-    /// 所有方向键松开后的抬指宽限期（ms）。0 = 立即抬指（等价于旧行为）
+    /// 所有方向键松开后的抬指宽限期（ms）。0 = 立即抬指（等价于旧行为）。
+    ///
+    /// 注意：`direction_pad.rs` 目前用的是同值常量 `RELEASE_GRACE_MS = 40`，
+    /// 接线时必须确认默认值契约（`docs/21` §21.6.2）。
     pub release_grace_ms: u64,
-    /// 初始按下时的缓动时长（ms），对应现有 `initial_duration`
+    /// 过渡段时长（ms），对应现有 `initial_duration`；用户可改、有默认值。
     pub initial_duration_ms: u64,
     /// `mode = sequence` 时的分段
     pub sequence: Vec<SequenceStep>,
@@ -71,7 +84,7 @@ impl Default for MotionProfile {
     }
 }
 
-/// 人类化配置：位置/时序抖动与缓慢漂移
+/// 人类化配置：位置/时序抖动与缓慢漂移（稳态用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HumanizeConfig {
@@ -95,10 +108,10 @@ impl Default for HumanizeConfig {
     }
 }
 
-/// 层②的总入口：一个按钮的全部行为配置
+/// 一个按钮的全部"像人手"配置。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct ButtonBehavior {
+pub struct HumanGestureImitator {
     pub motion: MotionProfile,
     pub humanize: HumanizeConfig,
 }

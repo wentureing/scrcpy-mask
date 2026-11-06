@@ -16,6 +16,8 @@ import {
   Typography,
 } from "antd";
 import {
+  formatAxisName,
+  formatBindingName,
   mappingButtonDragFactory,
   mappingButtonPresetStyle,
   mappingButtonTransformStyle,
@@ -51,11 +53,12 @@ function BindText({ text }: { text: string }) {
 
 function DirectionPadContent({ bind }: DirectionPadContentProps) {
   if (bind.type === "Button") {
+    // 圈内显示中文（用例 11）：四向绑定统一走 formatBindingName，避免出现 KeyW。
     const bindTexts = {
-      up: bind.up.join("+"),
-      down: bind.down.join("+"),
-      left: bind.left.join("+"),
-      right: bind.right.join("+"),
+      up: bind.up.map((b) => formatBindingName(b)).join(" + "),
+      down: bind.down.map((b) => formatBindingName(b)).join(" + "),
+      left: bind.left.map((b) => formatBindingName(b)).join(" + "),
+      right: bind.right.map((b) => formatBindingName(b)).join(" + "),
     };
 
     return (
@@ -77,8 +80,8 @@ function DirectionPadContent({ bind }: DirectionPadContentProps) {
     return (
       <>
         <Flex vertical gap={8}>
-          <BindText text={bind.x} />
-          <BindText text={bind.y} />
+          <BindText text={formatAxisName(bind.x)} />
+          <BindText text={formatAxisName(bind.y)} />
         </Flex>
       </>
     );
