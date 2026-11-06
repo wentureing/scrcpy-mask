@@ -27,6 +27,7 @@ use crate::{
             script::{BindMappingScriptHooks, MappingScriptHooks},
             script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
             utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
+            view_motion::ViewMotion,
         },
         mask_command::MaskSize,
     },
@@ -177,22 +178,14 @@ struct ObservationItem {
     start_cursor_pos: Vec2,
     mask_pos: Vec2,
     pointer_id: u64,
-    sensitivity: Vec2,
-    max_radius: f32,
-    effects: InputEffects,
+    /// 位移换算（输入效果 → 灵敏度 → 最大半径）统一由 `ViewMotion` 负责。
+    motion: ViewMotion,
 }
 
 impl ObservationItem {
-    /// 视角位移：先对输入位移做效果换算（翻转/增益），再乘灵敏度并夹到最大半径。
+    /// 视角位移：起点到当前光标位置，经 `ViewMotion` 换算。
     fn view_delta(&self, cursor_pos: Vec2) -> Vec2 {
-        let mut delta = self.effects.apply(cursor_pos - self.start_cursor_pos) * self.sensitivity;
-        if self.max_radius > 0.0 {
-            let len = delta.length();
-            if len > self.max_radius {
-                delta = delta / len * self.max_radius;
-            }
-        }
-        delta
+        self.motion.delta_since(self.start_cursor_pos, cursor_pos)
     }
 }
 
@@ -235,9 +228,7 @@ fn apply_observation_down(
             start_cursor_pos: cursor_pos,
             mask_pos,
             pointer_id,
-            sensitivity,
-            max_radius: mapping.max_radius,
-            effects: mapping.effects,
+            motion: ViewMotion::new(mapping.effects, sensitivity, mapping.max_radius),
         },
     );
 }

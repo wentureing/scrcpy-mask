@@ -13,7 +13,9 @@ use crate::{
     config::LocalConfig,
     input_effects::InputEffects,
     mask::{
-        mapping::{MappingState, mask_not_resizing, utils::ControlMsgHelper},
+        mapping::{
+            MappingState, mask_not_resizing, utils::ControlMsgHelper, view_motion::ViewMotion,
+        },
         mask_command::{MaskSize, TitlebarState},
         ui::basic::{MaskContentEntity, TITLEBAR_HEIGHT},
     },
@@ -909,7 +911,8 @@ fn handle_cursor_fps(
         raw_delta.y = 0.0;
     }
     // 输入效果（翻转/增益）作用在输入轴本身，所以翻转与灵敏度互不干扰。
-    let delta = fps_config.effects.apply(raw_delta) * fps_config.sensitivity;
+    // 换算顺序与 Observation/Fire 一致，统一由 ViewMotion 负责（docs/21 P2）。
+    let delta = ViewMotion::new(fps_config.effects, fps_config.sensitivity, 0.0).delta(raw_delta);
 
     if let Some(deferred_delta) =
         cleanup_pending_fps_touch(&cs_tx_res.0, &mut fps_config, mask_size.0)

@@ -17,6 +17,7 @@ pub mod serde_float;
 pub mod swipe;
 pub mod tap;
 pub mod utils;
+pub mod view_motion;
 
 use bevy::prelude::*;
 use bevy_ineffable::prelude::*;

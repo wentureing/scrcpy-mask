@@ -32,6 +32,7 @@ use crate::{
             script::{BindMappingScriptHooks, MappingScriptHooks},
             script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
             utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
+            view_motion::ViewMotion,
         },
         mask_command::MaskSize,
     },
@@ -539,7 +540,8 @@ pub fn handle_fire_trigger(
             // 取巧实现：只把横向分量传给设备，纵向位移直接丢弃
             raw_delta.y = 0.0;
         }
-        fire_item.current_pos += raw_delta * fire_item.sensitivity;
+        fire_item.current_pos +=
+            ViewMotion::from_sensitivity(fire_item.sensitivity).delta(raw_delta);
         ControlMsgHelper::send_touch(
             &cs_tx_res.0,
             MotionEventAction::Move,
