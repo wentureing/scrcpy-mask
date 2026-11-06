@@ -38,7 +38,7 @@ use crate::{
             script_helper::ScriptAST,
             script_helper::{ScriptRuntimeCommand, ScriptRuntimeCommandSender, ScriptSharedState},
             utils::{
-                ControlMsgHelper, DEFAULT_SWIPE_DURATION, Position, SingleSwipeStrategy,
+                DEFAULT_SWIPE_DURATION, Position, SingleSwipeStrategy,
                 anchor_random_offset, build_single_segment_swipe_intermediate_points,
                 default_random_offset, handle_direction_jitter, handle_direction_move_randomized,
                 random_offset_vec2, spawn_initial_swipe,
@@ -46,7 +46,6 @@ use crate::{
         },
         mask_command::MaskSize,
     },
-    scrcpy::constant::MotionEventAction,
     utils::ChannelSenderCS,
 };
 use tokio::sync::broadcast;

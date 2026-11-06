@@ -28,12 +28,11 @@ use crate::{
             },
             script::{BindMappingScriptHooks, MappingScriptHooks},
             script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
-            utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
+            utils::{Position, default_random_offset, random_offset_vec2},
             view_motion::ViewMotion,
         },
         mask_command::MaskSize,
     },
-    scrcpy::constant::MotionEventAction,
     tokio_tasks::TokioTasksRuntime,
     utils::ChannelSenderCS,
 };

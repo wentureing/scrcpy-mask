@@ -18,7 +18,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::{broadcast, oneshot};
 
 use crate::mask::mapping::utils::{
-    ControlMsgHelper, SingleSwipeStrategy, build_single_segment_swipe_intermediate_points,
+    SingleSwipeStrategy, build_single_segment_swipe_intermediate_points,
 };
 use crate::mask::mapping::{
     MappingState,

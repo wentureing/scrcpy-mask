@@ -22,13 +22,12 @@ use crate::{
         script::{BindMappingScriptHooks, MappingScriptHooks},
         script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
         utils::{
-            ControlMsgHelper, MultiSwipeStrategy, Position, SingleSwipeStrategy,
+            MultiSwipeStrategy, Position, SingleSwipeStrategy,
             build_multisegment_swipe_intermediate_points,
             build_single_segment_swipe_intermediate_points,
         },
     },
     mask::mask_command::MaskSize,
-    scrcpy::constant::MotionEventAction,
     utils::ChannelSenderCS,
 };
 

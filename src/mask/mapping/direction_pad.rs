@@ -25,7 +25,7 @@ use crate::{
         script::{BindMappingScriptHooks, MappingScriptHooks},
         script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
         utils::{
-            ControlMsgHelper, DEFAULT_SWIPE_DURATION, Position, SingleSwipeStrategy,
+            DEFAULT_SWIPE_DURATION, Position, SingleSwipeStrategy,
             default_jitter_offset, default_random_distance_max_scale,
             default_random_distance_min_scale, default_random_offset, handle_direction_jitter_path,
             handle_direction_move_randomized, next_jitter_deadline, random_offset_vec2,
@@ -33,7 +33,6 @@ use crate::{
         },
     },
     mask::mask_command::MaskSize,
-    scrcpy::constant::MotionEventAction,
     utils::ChannelSenderCS,
 };
 use bevy::{
