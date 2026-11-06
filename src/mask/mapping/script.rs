@@ -20,7 +20,7 @@ use crate::{
             MappingState,
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
-            free_look,
+            mapping_trigger,
             cursor::{CursorPosition, CursorState},
             script_helper::{
                 ScriptAST, ScriptRuntimeCommand, ScriptRuntimeCommandReceiver,
@@ -180,7 +180,8 @@ pub fn handle_script(
     shared_state: Res<ScriptSharedState>,
     runtime: ResMut<TokioTasksRuntime>,
     mut active_map: ResMut<ActiveScriptMap>,
-    free_look: Res<free_look::FreeLookState>,
+    access: Res<mapping_trigger::AccessState>,
+    rules: Res<mapping_trigger::AccessRulesResource>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -194,13 +195,10 @@ pub fn handle_script(
                 let raw_input_flag = mapping_state.get() == &MappingState::RawInput;
                 let fps_mode_flag = cursor_state.get() == &CursorState::Fps;
                 let interval = Duration::from_millis(mapping.interval as u64);
-                // 自由视角激活时若该映射绑定了被屏蔽的鼠标键，则不触发脚本。
-                let blocked = free_look::is_blocked_in_free_look(
-                    &mapping.bind,
-                    free_look.is_active(),
-                );
+                // 访问规则：当前状态下该映射是否允许触发（docs/26）。
+                let allowed = mapping_trigger::allowed(&rules, &mapping.id, access.0);
 
-                if ineffable.just_activated(action.ineff_continuous()) && !blocked {
+                if ineffable.just_activated(action.ineff_continuous()) && allowed {
                     if !mapping.pressed_script_ast.empty {
                         let ast = mapping.pressed_script_ast.clone();
                         let shared_state = shared_state.as_ref().clone();

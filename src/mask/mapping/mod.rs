@@ -8,6 +8,7 @@ pub mod executor;
 pub mod fire;
 pub mod free_look;
 pub mod human_gesture;
+pub mod mapping_trigger;
 pub mod observation;
 pub mod pipeline;
 pub mod raw_input;
@@ -88,6 +89,10 @@ impl Plugin for MappingPlugins {
                     script::script_init,
                 ),
             )
+            // L1 统一守卫：每帧算一次"当前单一状态"与规则表，早于所有 handle_*。
+            .init_resource::<mapping_trigger::AccessState>()
+            .init_resource::<mapping_trigger::AccessRulesResource>()
+            .add_systems(PreUpdate, mapping_trigger::update_access_state)
             // normal mapping mode
             .add_systems(
                 Update,

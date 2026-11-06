@@ -29,7 +29,7 @@ use crate::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
                 run_script_hook,
             },
-            free_look,
+            mapping_trigger,
             script::{BindMappingScriptHooks, MappingScriptHooks},
             script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
             utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
@@ -259,15 +259,17 @@ pub fn handle_fps(
     cursor_pos: Res<CursorPosition>,
     mask_size: Res<MaskSize>,
     runtime: ResMut<TokioTasksRuntime>,
-    free_look: Res<free_look::FreeLookState>,
+    access: Res<mapping_trigger::AccessState>,
+    rules: Res<mapping_trigger::AccessRulesResource>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Fps") {
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && !free_look::is_blocked_in_free_look(
-                        &mapping.as_ref_fps().bind,
-                        free_look.is_active(),
+                    && mapping_trigger::allowed(
+                        &rules,
+                        &mapping.as_ref_fps().id,
+                        access.0,
                     )
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
@@ -687,17 +689,15 @@ pub fn handle_fire(
     mut cursor_pos: ResMut<CursorPosition>,
     mask_size: Res<MaskSize>,
     mut lifecycle_state: ResMut<FireLifecycleState>,
-    free_look: Res<free_look::FreeLookState>,
+    access: Res<mapping_trigger::AccessState>,
+    rules: Res<mapping_trigger::AccessRulesResource>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Fire") {
                 let mapping = mapping.as_ref_fire();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && !free_look::is_blocked_in_free_look(
-                        &mapping.bind,
-                        free_look.is_active(),
-                    )
+                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if fire_has_before_hook(mapping) {

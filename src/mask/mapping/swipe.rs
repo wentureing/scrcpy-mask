@@ -15,7 +15,7 @@ use crate::{
         MappingState,
         binding::{ButtonBinding, ValidateMappingConfig},
         config::ActiveMappingConfig,
-        free_look,
+        mapping_trigger,
         cursor::{CursorPosition, CursorState},
         executor::{MappingExecutionError, make_mapping_execution_context, run_with_hooks},
         script::{BindMappingScriptHooks, MappingScriptHooks},
@@ -102,7 +102,8 @@ pub fn handle_swipe(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
-    free_look: Res<free_look::FreeLookState>,
+    access: Res<mapping_trigger::AccessState>,
+    rules: Res<mapping_trigger::AccessRulesResource>,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -110,10 +111,7 @@ pub fn handle_swipe(
                 let mapping = mapping.as_ref_swipe();
                 let original_size: Vec2 = active_mapping.original_size.into();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && !free_look::is_blocked_in_free_look(
-                        &mapping.bind,
-                        free_look.is_active(),
-                    )
+                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
                 {
                     let pointer_id = mapping.pointer_id;
                     let points = mapping.positions.clone();

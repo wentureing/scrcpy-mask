@@ -21,7 +21,6 @@ use crate::{
     config::LocalConfig,
     mask::{
         mapping::{
-            binding::{ButtonBinding, DirectionBinding},
             config::ActiveMappingConfig,
             cursor::{CursorState, NormalCursorCapture},
             observation::ActiveObservationMap,
@@ -139,38 +138,7 @@ fn enter_keycodes() -> Vec<KeyCode> {
         .collect()
 }
 
-/// 自由视角激活期间是否应屏蔽这次映射触发。
-///
-/// 只有 `active == true` 且按钮绑定里包含"用户配置屏蔽的鼠标键"才返回 true；
-/// 默认屏蔽列表为空 → 永远返回 false（"就像没有一样"）。
-pub fn is_blocked_in_free_look(bind: &ButtonBinding, active: bool) -> bool {
-    if !active {
-        return false;
-    }
-    let blocked = LocalConfig::free_look_blocked_mouse_buttons();
-    if blocked.is_empty() {
-        return false;
-    }
-    bind.to_string()
-        .split('+')
-        .any(|part| blocked.iter().any(|key| key == part))
-}
-
-/// 方向类绑定（方向轮盘/摇杆施法）的屏蔽判断：四个方向任一命中即屏蔽。
-pub fn is_blocked_direction(bind: &DirectionBinding, active: bool) -> bool {
-    if !active {
-        return false;
-    }
-    let blocked = LocalConfig::free_look_blocked_mouse_buttons();
-    if blocked.is_empty() {
-        return false;
-    }
-    bind.to_string_vec().iter().any(|dir| {
-        dir.split('+')
-            .any(|part| blocked.iter().any(|key| key == part))
-    })
-}
-
+/// `free_look_init` 之后的第一个系统入口。
 pub fn free_look_init(mut commands: Commands) {
     commands.insert_resource(FreeLookState::default());
 }
