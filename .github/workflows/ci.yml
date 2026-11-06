@@ -154,6 +154,17 @@ jobs:
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
+      # 追加：连测试代码一起做类型检查（--tests 只产 metadata，不 codegen）。
+      # 目的：把"测试代码写错（字段/类型/借用）"提前到 check 阶段发现，
+      # 而不是等到 test job 跑测试时才暴露（P0 落地时 E0063 就是这样漏到 test 的）。
+      # 若观察到缓存/耗时严重异常，直接回退本步骤（删除即可，不影响其它 job）。
+      - name: Cargo check (lib + tests)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo check --lib --tests --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   # 测试 job（P0，方案 1）：
   #   原先只有 package job 跑测试，且带 `-- scrcpy::` 过滤，导致 54/67 个测试从不执行。
   #   这里独立成一个 job，复用 package 的 release 缓存（shared-key / add-job-id-key 与 package 一致），
