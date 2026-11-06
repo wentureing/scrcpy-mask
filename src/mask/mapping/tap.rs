@@ -217,8 +217,7 @@ pub fn handle_single_tap(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     mut lifecycle_state: ResMut<SingleTapLifecycleState>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -226,7 +225,7 @@ pub fn handle_single_tap(
                 let original_size: Vec2 = active_mapping.original_size.into();
                 let mapping = mapping.as_ref_singletap();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     if mapping.sync {
                         if single_tap_has_before_hook(mapping) {
@@ -598,15 +597,14 @@ pub fn handle_repeat_tap(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     mut lifecycle_state: ResMut<RepeatTapLifecycleState>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("RepeatTap") {
                 let mapping = mapping.as_ref_repeattap();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if repeat_tap_has_before_hook(mapping) {
@@ -837,15 +835,14 @@ pub fn handle_multiple_tap(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("MultipleTap") {
                 let mapping = mapping.as_ref_multipletap();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let pointer_id = mapping.pointer_id;

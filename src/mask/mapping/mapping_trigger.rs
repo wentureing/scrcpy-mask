@@ -9,7 +9,7 @@
 //! 状态由 [`update_access_state`] 每帧算一次（`PreUpdate`），按优先级取**单一**状态：
 //! `raw_input > fps > observation > free_look_active > normal`。
 
-use bevy::prelude::*;
+use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::{
     access_rules::{AccessRule, CompiledAccessRules, STATE_FPS, STATE_FREE_LOOK_ACTIVE, STATE_NORMAL, STATE_OBSERVATION, STATE_RAW_INPUT},
@@ -94,6 +94,23 @@ pub fn update_access_state(
 /// 返回 `true` 表示放行；调用方仍需自行判断触发方式（`just_activated` / `just_pulsed`）。
 pub fn allowed(rules: &AccessRulesResource, mapping_id: &str, state: &str) -> bool {
     rules.compiled.allowed(mapping_id, state)
+}
+
+/// 把"当前状态 + 规则表"合成一个系统参数。
+///
+/// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；直接加两个参数会让
+/// `handle_pad_cast_spell` / `handle_direction_pad` 超限。合成一个后每处只多 1 个参数。
+#[derive(SystemParam)]
+pub struct AccessContext<'w> {
+    state: Res<'w, AccessState>,
+    rules: Res<'w, AccessRulesResource>,
+}
+
+impl AccessContext<'_> {
+    /// 该映射在当前状态下是否允许触发。
+    pub fn allowed(&self, mapping_id: &str) -> bool {
+        allowed(&self.rules, mapping_id, self.state.0)
+    }
 }
 
 #[cfg(test)]

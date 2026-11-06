@@ -259,18 +259,13 @@ pub fn handle_fps(
     cursor_pos: Res<CursorPosition>,
     mask_size: Res<MaskSize>,
     runtime: ResMut<TokioTasksRuntime>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Fps") {
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && mapping_trigger::allowed(
-                        &rules,
-                        &mapping.as_ref_fps().id,
-                        access.0,
-                    )
+                    && access.allowed(&mapping.as_ref_fps().id)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     match state.get() {
@@ -689,15 +684,14 @@ pub fn handle_fire(
     mut cursor_pos: ResMut<CursorPosition>,
     mask_size: Res<MaskSize>,
     mut lifecycle_state: ResMut<FireLifecycleState>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Fire") {
                 let mapping = mapping.as_ref_fire();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if fire_has_before_hook(mapping) {

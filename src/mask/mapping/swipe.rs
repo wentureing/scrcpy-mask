@@ -102,8 +102,7 @@ pub fn handle_swipe(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -111,7 +110,7 @@ pub fn handle_swipe(
                 let mapping = mapping.as_ref_swipe();
                 let original_size: Vec2 = active_mapping.original_size.into();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let pointer_id = mapping.pointer_id;
                     let points = mapping.positions.clone();

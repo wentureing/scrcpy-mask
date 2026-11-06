@@ -180,8 +180,7 @@ pub fn handle_script(
     shared_state: Res<ScriptSharedState>,
     runtime: ResMut<TokioTasksRuntime>,
     mut active_map: ResMut<ActiveScriptMap>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
@@ -196,7 +195,7 @@ pub fn handle_script(
                 let fps_mode_flag = cursor_state.get() == &CursorState::Fps;
                 let interval = Duration::from_millis(mapping.interval as u64);
                 // 访问规则：当前状态下该映射是否允许触发（docs/26）。
-                let allowed = mapping_trigger::allowed(&rules, &mapping.id, access.0);
+                let allowed = access.allowed(&mapping.id);
 
                 if ineffable.just_activated(action.ineff_continuous()) && allowed {
                     if !mapping.pressed_script_ast.empty {

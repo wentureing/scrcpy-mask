@@ -442,8 +442,7 @@ pub fn handle_direction_pad(
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
     block: Res<BlockDirectionPad>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
     mut direction_pad_map: ResMut<DirectionPadMap>,
     mut lifecycle_state: ResMut<DirectionPadLifecycleState>,
     key_input: Res<ButtonInput<KeyCode>>,
@@ -463,7 +462,7 @@ pub fn handle_direction_pad(
                 let sender = IntentSender::new(cs_tx_res.0.clone(), original_size);
                 // 访问规则：当前状态下该映射不允许触发时，视为"无输入"，
                 // 走既有的释放/回中逻辑，避免触点一直按住。
-                let raw_dir = if mapping_trigger::allowed(&rules, &mapping.id, access.0) {
+                let raw_dir = if access.allowed(&mapping.id) {
                     ineffable.direction_2d(action.ineff_dual_axis())
                 } else {
                     Default::default()

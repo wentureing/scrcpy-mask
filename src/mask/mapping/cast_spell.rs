@@ -683,15 +683,14 @@ pub fn handle_mouse_cast_spell(
     mut block_direction_pad: ResMut<BlockDirectionPad>,
     mut lifecycle_state: ResMut<MouseCastSpellLifecycleState>,
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("MouseCastSpell") {
                 let mapping = mapping.as_ref_mousecastspell();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let cur_cursor_pos = cursor_pos.0;
                     let cur_mask_size = mask_size.0;
@@ -1296,15 +1295,14 @@ pub fn handle_pad_cast_spell(
     mut block_direction_pad: ResMut<BlockDirectionPad>,
     mut lifecycle_state: ResMut<PadCastSpellLifecycleState>,
     mut normal_cursor_capture: ResMut<NormalCursorCapture>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("PadCastSpell") {
                 let mapping = mapping.as_ref_padcastspell();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     if pad_cast_has_before_hook(mapping) {
                         let action = action.to_string();
@@ -1693,15 +1691,14 @@ pub fn handle_cancel_cast(
     mapping_state: Res<State<MappingState>>,
     cursor_state: Res<State<CursorState>>,
     runtime: ResMut<TokioTasksRuntime>,
-    access: Res<mapping_trigger::AccessState>,
-    rules: Res<mapping_trigger::AccessRulesResource>,
+    access: mapping_trigger::AccessContext,
 ) {
     if let Some(active_mapping) = &active_mapping.0 {
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("CancelCast") {
                 let mapping = mapping.as_ref_cancelcast();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && mapping_trigger::allowed(&rules, &mapping.id, access.0)
+                    && access.allowed(&mapping.id)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let mapping_id = mapping.id.clone();
