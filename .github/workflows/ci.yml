@@ -317,11 +317,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          # 与 check 分开：check 是 dev profile、这里是 release，target 内容不同，不能混用。
-          shared-key: windows-x64-package
+          # 与 test job 共用 release 缓存：package needs test，test 先跑并保存完整的
+          # release 依赖 rlib；package 命中后只需增量编译本 crate 的 bin。
+          # （check 是 dev profile，target 内容不同，不能混用。）
+          shared-key: windows-x64-test
           # job id 默认会进 cache key（实测 key = v0-rust-<shared-key>-<job>-<os>-<rustc>-<env>）。
-          # 关掉后本 job 与 release.yml 的 windows job、cache-warm.yml 的 package-warm job
-          # 才能共用同一份 release 缓存。
+          # 关掉后本 job 与 test job 才能共用同一份 release 缓存。
           add-job-id-key: false
           env-vars: ""
           # 即使构建失败也保存已编译的依赖，下次（修好问题后）能省一大半时间
