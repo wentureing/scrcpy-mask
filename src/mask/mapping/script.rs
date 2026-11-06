@@ -195,7 +195,7 @@ pub fn handle_script(
                 let fps_mode_flag = cursor_state.get() == &CursorState::Fps;
                 let interval = Duration::from_millis(mapping.interval as u64);
                 // 访问规则：当前状态下该映射是否允许触发（docs/26）。
-                let allowed = access.allowed(&mapping.id);
+                let allowed = access.allowed(&mapping.id, Some("press"));
 
                 if ineffable.just_activated(action.ineff_continuous()) && allowed {
                     if !mapping.pressed_script_ast.empty {

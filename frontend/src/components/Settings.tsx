@@ -220,7 +220,7 @@ export default function Settings() {
   // ---- 访问规则（docs/26）：映射 id + 单一状态 + 允许/不允许 ----
   // 选项必须用真实 mapping.id（不是数组索引 / pointer_id），label 显示“类型 · 绑定键 · id”。
   const [mappingOptions, setMappingOptions] = useState<
-    { value: string; label: string }[]
+    { value: string; label: string; type: string }[]
   >([]);
 
   useEffect(() => {
@@ -247,6 +247,7 @@ export default function Settings() {
           .map((mapping) => ({
             value: mapping.id as string,
             label: formatMappingLabel(mapping),
+            type: mapping.type ?? "",
           }));
         setMappingOptions(list);
       })
@@ -267,11 +268,75 @@ export default function Settings() {
       value: "free_look_active",
       label: t("settings.accessStateFreeLookActive"),
     },
-    { value: "fps", label: "FPS" },
+    {
+      value: "free_look_enabled",
+      label: t("settings.accessStateFreeLookEnabledOn"),
+    },
+    {
+      value: "free_look_disabled",
+      label: t("settings.accessStateFreeLookEnabledOff"),
+    },
+    { value: "fps", label: t("settings.accessStateFps") },
     { value: "normal", label: t("settings.accessStateNormal") },
     { value: "observation", label: t("settings.accessStateObservation") },
-    { value: "raw_input", label: "RawInput" },
+    { value: "raw_input", label: t("settings.accessStateRawInput") },
   ];
+
+  // 映射内操作选项（按映射类型动态；空值 = 整个映射）
+  const accessActionOptions = (type: string) => {
+    const whole = { value: "", label: t("settings.accessActionWhole") };
+    switch (type) {
+      case "SingleTap":
+        return [whole, { value: "tap", label: t("settings.accessActionTap") }];
+      case "RepeatTap":
+        return [
+          whole,
+          { value: "repeat", label: t("settings.accessActionRepeat") },
+        ];
+      case "MultipleTap":
+        return [
+          whole,
+          { value: "multiple", label: t("settings.accessActionMultiple") },
+        ];
+      case "Swipe":
+        return [
+          whole,
+          { value: "swipe", label: t("settings.accessActionSwipe") },
+        ];
+      case "DirectionPad":
+        return [
+          whole,
+          { value: "up", label: t("settings.accessActionUp") },
+          { value: "down", label: t("settings.accessActionDown") },
+          { value: "left", label: t("settings.accessActionLeft") },
+          { value: "right", label: t("settings.accessActionRight") },
+        ];
+      case "Observation":
+        return [whole, { value: "hold", label: t("settings.accessActionHold") }];
+      case "Fire":
+        return [whole, { value: "fire", label: t("settings.accessActionFire") }];
+      case "MouseCastSpell":
+      case "PadCastSpell":
+        return [whole, { value: "cast", label: t("settings.accessActionCast") }];
+      case "CancelCast":
+        return [
+          whole,
+          { value: "cancel", label: t("settings.accessActionCancel") },
+        ];
+      case "Script":
+        return [
+          whole,
+          { value: "press", label: t("settings.accessActionPress") },
+        ];
+      case "Fps":
+        return [
+          whole,
+          { value: "toggle", label: t("settings.accessActionToggle") },
+        ];
+      default:
+        return [whole];
+    }
+  };
 
   async function saveAccessRules(
     next: { mapping_id: string; when: string; allow: boolean }[],
@@ -539,6 +604,19 @@ export default function Settings() {
                     }}
                   />
                   <Select
+                    className="w-xs"
+                    value={rule.action ?? ""}
+                    options={accessActionOptions(
+                      mappingOptions.find((item) => item.value === rule.mapping_id)
+                        ?.type ?? "",
+                    )}
+                    onChange={(v) => {
+                      const next = [...(localConfig.accessRules ?? [])];
+                      next[index] = { ...next[index], action: v || null };
+                      saveAccessRules(next);
+                    }}
+                  />
+                  <Select
                     className="w-sm"
                     value={rule.when}
                     options={accessStateOptions}
@@ -579,6 +657,7 @@ export default function Settings() {
                     ...(localConfig.accessRules ?? []),
                     {
                       mapping_id: mappingOptions[0]?.value ?? "",
+                      action: null,
                       when: "free_look_inactive",
                       allow: false,
                     },

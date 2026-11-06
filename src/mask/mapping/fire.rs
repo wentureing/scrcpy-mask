@@ -259,7 +259,7 @@ pub fn handle_fps(
         for (action, mapping) in &active_mapping.mappings {
             if action.as_ref().starts_with("Fps") {
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && access.allowed(&mapping.as_ref_fps().id)
+                    && access.allowed(&mapping.as_ref_fps().id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     match state.get() {
@@ -677,7 +677,7 @@ pub fn handle_fire(
             if action.as_ref().starts_with("Fire") {
                 let mapping = mapping.as_ref_fire();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if fire_has_before_hook(mapping) {

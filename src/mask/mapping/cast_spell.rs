@@ -680,7 +680,7 @@ pub fn handle_mouse_cast_spell(
             if action.as_ref().starts_with("MouseCastSpell") {
                 let mapping = mapping.as_ref_mousecastspell();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let cur_cursor_pos = cursor_pos.0;
                     let cur_mask_size = mask_size.0;
@@ -1286,7 +1286,7 @@ pub fn handle_pad_cast_spell(
             if action.as_ref().starts_with("PadCastSpell") {
                 let mapping = mapping.as_ref_padcastspell();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     if pad_cast_has_before_hook(mapping) {
                         let action = action.to_string();
@@ -1676,7 +1676,7 @@ pub fn handle_cancel_cast(
             if action.as_ref().starts_with("CancelCast") {
                 let mapping = mapping.as_ref_cancelcast();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let mapping_id = mapping.id.clone();

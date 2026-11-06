@@ -76,7 +76,7 @@ mod uhid_config_tests {
         assert_eq!(value["free_look_exit_keys"], serde_json::json!(["KeyF"]));
         assert_eq!(value["free_look_enter_keys"], serde_json::json!([]));
         assert_eq!(value["virtual_cursor_visible"], serde_json::json!(false));
-        assert_eq!(value["config_version"], serde_json::json!(2));
+        assert_eq!(value["config_version"], serde_json::json!(3));
         assert!(value.get("free_look_exit_key").is_none());
     }
 
@@ -121,7 +121,7 @@ mod uhid_config_tests {
         assert_eq!(rules[0]["mapping_id"], "Fire-0");
         assert_eq!(rules[0]["when"], "free_look_active");
         assert_eq!(rules[0]["allow"], false);
-        assert_eq!(value["config_version"], serde_json::json!(2));
+        assert_eq!(value["config_version"], serde_json::json!(3));
     }
 
     #[test]
@@ -145,11 +145,13 @@ mod uhid_config_tests {
         let rules = vec![
             AccessRule {
                 mapping_id: "a62a9ce3".to_string(),
+                action: None,
                 when: "free_look_inactive".to_string(),
                 allow: false,
             },
             AccessRule {
                 mapping_id: "9".to_string(),
+                action: None,
                 when: "normal".to_string(),
                 allow: false,
             },
@@ -171,7 +173,7 @@ fn default_free_look_exit_key() -> String {
 }
 
 /// 当前配置版本。结构发生不兼容变化时 +1，并在 [`migrate_config`] 里加对应迁移器。
-pub const CURRENT_CONFIG_VERSION: u32 = 2;
+pub const CURRENT_CONFIG_VERSION: u32 = 3;
 
 fn default_config_version() -> u32 {
     CURRENT_CONFIG_VERSION
@@ -665,8 +667,12 @@ pub fn migrate_config(
     }
 
     let mut migrated = false;
-    if version < CURRENT_CONFIG_VERSION as u64 {
+    if version < 2 {
         migrate_v0_to_v2(obj, mapping_binds);
+        migrated = true;
+    }
+    if version < 3 {
+        migrate_v2_to_v3(obj);
         migrated = true;
     }
     if migrated {
@@ -676,6 +682,24 @@ pub fn migrate_config(
         );
     }
     migrated
+}
+
+/// v2 → v3：访问规则增加可选的 `action` 字段（映射内操作）。
+///
+/// 结构兼容（serde 默认 `None`），这里只补齐字段，便于用户导出后看到完整结构。
+fn migrate_v2_to_v3(obj: &mut serde_json::Map<String, serde_json::Value>) {
+    if let Some(rules) = obj
+        .get_mut("access_rules")
+        .and_then(|value| value.as_array_mut())
+    {
+        for rule in rules {
+            if let Some(entry) = rule.as_object_mut() {
+                entry
+                    .entry("action".to_string())
+                    .or_insert(serde_json::Value::Null);
+            }
+        }
+    }
 }
 
 /// v0 → v2（一次到位）：

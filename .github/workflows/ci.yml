@@ -209,11 +209,12 @@ jobs:
         shell: msys2 {0}
         run: ./scripts/build-ffmpeg.sh
 
-      # 与 package job 相同的 key，直接命中 release 编译产物
+      # 独立 key：test 需要 release 的 rlib，而 package 缓存可能不完整（出包取消时）。
+      # 复用 package 的 key 会导致依赖反复全量重编；这里让 test 自建一份缓存。
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: windows-x64-package
+          shared-key: windows-x64-test
           add-job-id-key: false
           env-vars: ""
           cache-on-failure: true

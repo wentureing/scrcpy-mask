@@ -219,7 +219,7 @@ pub fn handle_single_tap(
                 let original_size: Vec2 = active_mapping.original_size.into();
                 let mapping = mapping.as_ref_singletap();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     if mapping.sync {
                         if single_tap_has_before_hook(mapping) {
@@ -590,7 +590,7 @@ pub fn handle_repeat_tap(
             if action.as_ref().starts_with("RepeatTap") {
                 let mapping = mapping.as_ref_repeattap();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     if repeat_tap_has_before_hook(mapping) {
@@ -824,7 +824,7 @@ pub fn handle_multiple_tap(
             if action.as_ref().starts_with("MultipleTap") {
                 let mapping = mapping.as_ref_multipletap();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let pointer_id = mapping.pointer_id;

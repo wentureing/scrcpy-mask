@@ -110,7 +110,7 @@ pub fn handle_swipe(
                 let mapping = mapping.as_ref_swipe();
                 let original_size: Vec2 = active_mapping.original_size.into();
                 if ineffable.just_pulsed(action.ineff_pulse())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let pointer_id = mapping.pointer_id;
                     let points = mapping.positions.clone();

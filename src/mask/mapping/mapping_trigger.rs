@@ -115,21 +115,25 @@ pub fn update_access_state(
     }
 }
 
-/// 统一判定：该映射在当前状态下是否允许触发。
+/// 统一判定：该映射（或其中某个操作）在当前条件下是否允许触发。
 ///
 /// 返回 `true` 表示放行；调用方仍需自行判断触发方式（`just_activated` / `just_pulsed`）。
 pub fn allowed(
     rules: &AccessRulesResource,
     mapping_id: &str,
+    action: Option<&str>,
     state: &str,
     free_look_active: bool,
+    free_look_enabled: bool,
 ) -> bool {
-    rules.compiled.allowed(mapping_id, state, free_look_active)
+    rules
+        .compiled
+        .allowed(mapping_id, action, state, free_look_active, free_look_enabled)
 }
 
-/// 把"当前状态 + 规则表 + 自由视角状态"合成一个系统参数。
+/// 把"当前状态 + 规则表 + 自由视角状态/开关"合成一个系统参数。
 ///
-/// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；直接加两个参数会让
+/// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；直接加多个参数会让
 /// `handle_pad_cast_spell` / `handle_direction_pad` 超限。合成一个后每处只多 1 个参数。
 #[derive(SystemParam)]
 pub struct AccessContext<'w> {
@@ -139,13 +143,17 @@ pub struct AccessContext<'w> {
 }
 
 impl AccessContext<'_> {
-    /// 该映射在当前状态下是否允许触发。
-    pub fn allowed(&self, mapping_id: &str) -> bool {
+    /// 该映射（或其中某个操作）在当前条件下是否允许触发。
+    ///
+    /// `action`：`None` = 整个映射；`Some("up")` 等 = 映射内操作（具体优先）。
+    pub fn allowed(&self, mapping_id: &str, action: Option<&str>) -> bool {
         allowed(
             &self.rules,
             mapping_id,
+            action,
             self.state.0,
             self.free_look.is_active(),
+            crate::config::LocalConfig::free_look_enabled(),
         )
     }
 }
@@ -168,20 +176,32 @@ mod tests {
 
     #[test]
     fn allowed_delegates_to_compiled_rules() {
-        let rules = AccessRulesResource {
-            source: vec![AccessRule {
-                mapping_id: "Fire-0".to_string(),
-                when: STATE_FREE_LOOK_ACTIVE.to_string(),
-                allow: false,
-            }],
-            compiled: CompiledAccessRules::compile(&[AccessRule {
-                mapping_id: "Fire-0".to_string(),
-                when: STATE_FREE_LOOK_ACTIVE.to_string(),
-                allow: false,
-            }]),
+        let rule = AccessRule {
+            mapping_id: "Fire-0".to_string(),
+            action: None,
+            when: STATE_FREE_LOOK_ACTIVE.to_string(),
+            allow: false,
         };
-        assert!(!allowed(&rules, "Fire-0", STATE_FREE_LOOK_ACTIVE, true));
-        assert!(allowed(&rules, "Fire-0", STATE_NORMAL, false));
-        assert!(allowed(&rules, "Other", STATE_FREE_LOOK_ACTIVE, true));
+        let rules = AccessRulesResource {
+            source: vec![rule.clone()],
+            compiled: CompiledAccessRules::compile(&[rule]),
+        };
+        assert!(!allowed(
+            &rules,
+            "Fire-0",
+            None,
+            STATE_FREE_LOOK_ACTIVE,
+            true,
+            true
+        ));
+        assert!(allowed(&rules, "Fire-0", None, STATE_NORMAL, false, true));
+        assert!(allowed(
+            &rules,
+            "Other",
+            None,
+            STATE_FREE_LOOK_ACTIVE,
+            true,
+            true
+        ));
     }
 }

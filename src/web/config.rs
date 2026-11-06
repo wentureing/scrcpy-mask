@@ -918,8 +918,16 @@ async fn update_config(
                     .get("allow")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);
+                // 可选：映射内操作（DirectionPad 的 up/down/left/right、Script 的 press 等）
+                let action = obj
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
                 rules.push(crate::access_rules::AccessRule {
                     mapping_id: mapping_id.to_string(),
+                    action,
                     when: when.to_string(),
                     allow,
                 });

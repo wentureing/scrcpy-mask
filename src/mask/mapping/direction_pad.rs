@@ -516,10 +516,22 @@ pub fn handle_direction_pad(
                 let original_size: Vec2 = active_mapping.original_size.into();
                 // 层④：本映射所有坐标都经指令发送器统一发出
                 let sender = IntentSender::new(cs_tx_res.0.clone(), original_size);
-                // 访问规则：当前状态下该映射不允许触发时，视为"无输入"，
-                // 走既有的释放/回中逻辑，避免触点一直按住。
-                let raw_dir = if access.allowed(&mapping.id) {
-                    ineffable.direction_2d(action.ineff_dual_axis())
+                // 访问规则：先读方向，再按方向细分 action（up/down/left/right）判定；
+                // 不允许时视为"无输入"，走既有的释放/回中逻辑，避免触点一直按住。
+                let raw_dir = ineffable.direction_2d(action.ineff_dual_axis());
+                let direction_action = if raw_dir.y < 0.0 {
+                    Some("up")
+                } else if raw_dir.y > 0.0 {
+                    Some("down")
+                } else if raw_dir.x < 0.0 {
+                    Some("left")
+                } else if raw_dir.x > 0.0 {
+                    Some("right")
+                } else {
+                    None
+                };
+                let raw_dir = if access.allowed(&mapping.id, direction_action) {
+                    raw_dir
                 } else {
                     Default::default()
                 };

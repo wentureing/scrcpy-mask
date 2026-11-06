@@ -287,7 +287,7 @@ pub fn handle_observation(
             if action.as_ref().starts_with("Observation") {
                 let mapping = mapping.as_ref_observation();
                 if ineffable.just_activated(action.ineff_continuous())
-                    && access.allowed(&mapping.id)
+                    && access.allowed(&mapping.id, None)
                 {
                     let original_size: Vec2 = active_mapping.original_size.into();
                     let capture_owner = observation_capture_owner(action.as_ref());
