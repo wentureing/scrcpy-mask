@@ -60,7 +60,8 @@ jobs:
 
   check:
     needs: gate
-    if: needs.gate.outputs.proceed == 'true'
+    # 普通 push 跑检查；带 [package] 的发包提交跳过检查（发包只做构建与打包）。
+    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[package]')) }}
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
