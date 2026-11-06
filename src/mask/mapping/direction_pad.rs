@@ -66,13 +66,11 @@ pub fn cleanup_direction_pad_on_stop(
         } else {
             item.original_pos + item.last_state
         };
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Up,
-            item.pointer_id,
-            item.original_size,
-            last_pos,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), item.original_size)
+            .send(Intent::Up {
+                pointer_id: item.pointer_id,
+                pos: last_pos,
+            });
     }
     block_direction_pad.0 = false;
     lifecycle_state.0.clear_all();
@@ -326,13 +324,11 @@ fn apply_direction_pad_down(
     };
     let actual_state = randomize_direction_pad_state(state, mapping);
 
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Down,
-        pointer_id,
-        original_size,
-        random_anchor,
-    );
+    IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: random_anchor,
+            });
 
     let strategy = if mapping.enable_randomization {
         SingleSwipeStrategy::ArcWithEaseOut
@@ -390,20 +386,16 @@ fn apply_direction_pad_tap_without_swipe(
         original_pos
     };
 
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Down,
-        mapping.pointer_id,
-        original_size,
-        random_anchor,
-    );
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Up,
-        mapping.pointer_id,
-        original_size,
-        random_anchor,
-    );
+    IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: mapping.pointer_id,
+                pos: random_anchor,
+            });
+    IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: mapping.pointer_id,
+                pos: random_anchor,
+            });
 }
 
 fn apply_direction_pad_up(
@@ -417,13 +409,11 @@ fn apply_direction_pad_up(
         } else {
             item.original_pos + item.last_state
         };
-        ControlMsgHelper::send_touch(
-            &cs_tx.0,
-            MotionEventAction::Up,
-            item.pointer_id,
-            item.original_size,
-            last_pos,
-        );
+        IntentSender::new(cs_tx.0.clone(), item.original_size)
+            .send(Intent::Up {
+                pointer_id: item.pointer_id,
+                pos: last_pos,
+            });
         true
     } else {
         false

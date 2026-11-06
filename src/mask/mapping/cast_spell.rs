@@ -28,6 +28,7 @@ use crate::{
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
             direction_pad::{BlockDirectionPad, DirectionPadMap},
             mapping_trigger,
+            pipeline::{Intent, IntentSender},
             executor::{
                 MappingExecutionContext, MappingExecutionError, MappingLifecycleStart,
                 MappingLifecycleState, make_mapping_execution_context, run_script_hook,
@@ -68,13 +69,11 @@ pub fn cleanup_cast_spell_on_stop(
     mut pad_lifecycle_state: ResMut<PadCastSpellLifecycleState>,
 ) {
     if let Some(cast) = active_cast.0.take() {
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Up,
-            cast.pointer_id,
-            mask_size.0,
-            cast.current_pos,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Up {
+                pointer_id: cast.pointer_id,
+                pos: cast.current_pos,
+            });
         if cast.mouse_flag {
             normal_cursor_capture.release(&mouse_cast_capture_owner(&cast.key));
         }
@@ -400,13 +399,11 @@ fn take_active_cast_for_release(
     block_direction_pad: &mut BlockDirectionPad,
 ) -> Option<ActiveCastSpellItem> {
     let cast = active_cast.0.take()?;
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Up,
-        cast.pointer_id,
-        mask_size,
-        cast.current_pos,
-    );
+    IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: cast.pointer_id,
+                pos: cast.current_pos,
+            });
     if cast.block_direction_pad {
         block_direction_pad.0 = false;
     }
@@ -536,13 +533,11 @@ fn start_mouse_cast_after_before(
     let vertical_scale_factor = mapping.vertical_scale_factor;
     let current_pos = original_pos / original_size * mask_size;
 
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Down,
-        pointer_id,
-        mask_size,
-        current_pos,
-    );
+    IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: current_pos,
+            });
 
     let target_pos = if !cast_no_direction {
         cal_mouse_cast_spell_current_pos(
@@ -597,13 +592,11 @@ fn start_mouse_cast_after_before(
             while !initial_swipe_done.load(Ordering::Relaxed) {
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
-            ControlMsgHelper::send_touch(
-                &cs_tx,
-                MotionEventAction::Up,
-                pointer_id,
-                mask_size,
-                target_pos,
-            );
+            IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: target_pos,
+            });
             if !after_script_ast.empty {
                 if let Err(e) = run_script_hook(&after_script_ast, &exec_ctx).await {
                     log::error!("[MouseCastSpell] script hook runtime error: {:?}", e);
@@ -657,13 +650,11 @@ pub fn handle_mouse_cast_spell_trigger(
             active_cast.horizontal_scale_factor,
             active_cast.vertical_scale_factor,
         );
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Move,
-            active_cast.pointer_id,
-            mask_size.0,
-            new_pos,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Move {
+                pointer_id: active_cast.pointer_id,
+                pos: new_pos,
+            });
         active_cast.current_pos = new_pos;
     }
 }
@@ -1062,13 +1053,11 @@ fn release_direction_pads_and_spawn_after(
         } else {
             item.original_pos + item.last_state
         };
-        ControlMsgHelper::send_touch(
-            cs_tx,
-            MotionEventAction::Up,
-            item.pointer_id,
-            item.original_size,
-            last_pos,
-        );
+        IntentSender::new(cs_tx.clone(), item.original_size)
+            .send(Intent::Up {
+                pointer_id: item.pointer_id,
+                pos: last_pos,
+            });
 
         let Some((_, BindMappingType::DirectionPad(mapping))) = active_mapping
             .mappings
@@ -1168,13 +1157,11 @@ fn start_pad_cast_after_before(
         (Vec2::ZERO, Vec2::ZERO)
     };
 
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Down,
-        pointer_id,
-        mask_size,
-        current_pos,
-    );
+    IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: current_pos,
+            });
 
     let slide_start = if mapping.enable_randomization {
         random_anchor / original_size * mask_size
@@ -1255,13 +1242,11 @@ pub fn handle_pad_cast_spell_trigger(
                 );
                 active_cast.last_state = state;
             } else {
-                ControlMsgHelper::send_touch(
-                    &cs_tx_res.0,
-                    MotionEventAction::Move,
-                    active_cast.pointer_id,
-                    active_cast.original_size,
-                    active_cast.cast_pos + state,
-                );
+                IntentSender::new(cs_tx_res.0.clone(), active_cast.original_size)
+            .send(Intent::Move {
+                pointer_id: active_cast.pointer_id,
+                pos: active_cast.cast_pos + state,
+            });
                 active_cast.last_state = state;
             }
         } else if active_cast.enable_randomization && Instant::now() > active_cast.next_jitter_at {
@@ -1628,13 +1613,11 @@ pub fn cancel_active_cast_with_completion(
             );
             let mut end_pos = current_pos;
             for point in move_points {
-                ControlMsgHelper::send_touch(
-                    &cs_tx,
-                    MotionEventAction::Move,
-                    pointer_id,
-                    mask_size,
-                    point.pos,
-                );
+                IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: point.pos,
+            });
                 tokio::time::sleep(std::time::Duration::from_millis(point.wait_ms)).await;
                 end_pos = point.pos;
             }
@@ -1643,23 +1626,19 @@ pub fn cancel_active_cast_with_completion(
             let step_interval = CAST_SPELL_DELAY / steps;
             for _ in 0..steps {
                 end_pos.x += 5.;
-                ControlMsgHelper::send_touch(
-                    &cs_tx,
-                    MotionEventAction::Move,
-                    pointer_id,
-                    mask_size,
-                    end_pos,
-                );
+                IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: end_pos,
+            });
                 tokio::time::sleep(std::time::Duration::from_millis(step_interval)).await;
             }
 
-            ControlMsgHelper::send_touch(
-                &cs_tx,
-                MotionEventAction::Up,
-                pointer_id,
-                mask_size,
-                cancel_pos,
-            );
+            IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: cancel_pos,
+            });
 
             if cast_block_direction_pad {
                 ctx.run_on_main_thread(move |ctx| {

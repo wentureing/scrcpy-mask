@@ -12,7 +12,11 @@
 use bevy::math::Vec2;
 
 use crate::{
-    mask::mapping::utils::ControlMsgHelper, scrcpy::constant::MotionEventAction,
+    mask::mapping::{
+        pipeline::{Intent, IntentSender},
+        utils::ControlMsgHelper,
+    },
+    scrcpy::constant::MotionEventAction,
     utils::ChannelSenderCS,
 };
 
@@ -70,24 +74,20 @@ impl TouchPulse {
         match self.phase {
             PulsePhase::Idle => {}
             PulsePhase::Pressed { end } => {
-                ControlMsgHelper::send_touch(
-                    &cs_tx.0,
-                    MotionEventAction::Move,
-                    self.config.pointer_id,
-                    size,
-                    end,
-                );
+                IntentSender::new(cs_tx.0.clone(), size)
+            .send(Intent::Move {
+                pointer_id: self.config.pointer_id,
+                pos: end,
+            });
                 self.phase = PulsePhase::Released { end };
                 return;
             }
             PulsePhase::Released { end } => {
-                ControlMsgHelper::send_touch(
-                    &cs_tx.0,
-                    MotionEventAction::Up,
-                    self.config.pointer_id,
-                    size,
-                    end,
-                );
+                IntentSender::new(cs_tx.0.clone(), size)
+            .send(Intent::Up {
+                pointer_id: self.config.pointer_id,
+                pos: end,
+            });
                 self.phase = PulsePhase::Idle;
                 return;
             }
@@ -108,13 +108,11 @@ impl TouchPulse {
         }
 
         let end = anchor + delta;
-        ControlMsgHelper::send_touch(
-            &cs_tx.0,
-            MotionEventAction::Down,
-            self.config.pointer_id,
-            size,
-            anchor,
-        );
+        IntentSender::new(cs_tx.0.clone(), size)
+            .send(Intent::Down {
+                pointer_id: self.config.pointer_id,
+                pos: anchor,
+            });
         self.phase = PulsePhase::Pressed { end };
     }
 
@@ -125,13 +123,11 @@ impl TouchPulse {
             PulsePhase::Pressed { end } | PulsePhase::Released { end } => Some(end),
         };
         if let Some(pos) = pos {
-            ControlMsgHelper::send_touch(
-                &cs_tx.0,
-                MotionEventAction::Up,
-                self.config.pointer_id,
-                size,
-                pos,
-            );
+            IntentSender::new(cs_tx.0.clone(), size)
+            .send(Intent::Up {
+                pointer_id: self.config.pointer_id,
+                pos: pos,
+            });
         }
         self.phase = PulsePhase::Idle;
         self.pending = Vec2::ZERO;

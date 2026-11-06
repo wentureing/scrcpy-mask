@@ -16,6 +16,7 @@ use crate::{
         binding::{ButtonBinding, ValidateMappingConfig},
         config::ActiveMappingConfig,
         mapping_trigger,
+        pipeline::{Intent, IntentSender},
         cursor::{CursorPosition, CursorState},
         executor::{MappingExecutionError, make_mapping_execution_context, run_with_hooks},
         script::{BindMappingScriptHooks, MappingScriptHooks},
@@ -130,13 +131,11 @@ pub fn handle_swipe(
                     );
                     runtime.spawn_background_task(move |_ctx| async move {
                         let result = run_with_hooks(hooks, exec_ctx, move |ctx| async move {
-                            ControlMsgHelper::send_touch(
-                                &ctx.cs_tx,
-                                MotionEventAction::Down,
-                                pointer_id,
-                                ctx.original_size,
-                                points[0].into(),
-                            );
+                            IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: points[0].into(),
+            });
                             let mut cur_pos: Vec2 = points[0].into();
                             if points.len() > 2 {
                                 let waypoints: Vec<Vec2> =
@@ -146,13 +145,11 @@ pub fn handle_swipe(
                                     MultiSwipeStrategy::from(strategy),
                                     duration,
                                 ) {
-                                    ControlMsgHelper::send_touch(
-                                        &ctx.cs_tx,
-                                        MotionEventAction::Move,
-                                        pointer_id,
-                                        ctx.original_size,
-                                        step.pos,
-                                    );
+                                    IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: step.pos,
+            });
                                     sleep(Duration::from_millis(step.wait_ms)).await;
                                 }
                                 cur_pos = (*points.last().unwrap()).into();
@@ -162,33 +159,27 @@ pub fn handle_swipe(
                                     for step in build_single_segment_swipe_intermediate_points(
                                         cur_pos, next_pos, strategy, duration,
                                     ) {
-                                        ControlMsgHelper::send_touch(
-                                            &ctx.cs_tx,
-                                            MotionEventAction::Move,
-                                            pointer_id,
-                                            ctx.original_size,
-                                            step.pos,
-                                        );
+                                        IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: step.pos,
+            });
                                         sleep(Duration::from_millis(step.wait_ms)).await;
                                     }
 
-                                    ControlMsgHelper::send_touch(
-                                        &ctx.cs_tx,
-                                        MotionEventAction::Move,
-                                        pointer_id,
-                                        ctx.original_size,
-                                        next_pos,
-                                    );
+                                    IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: next_pos,
+            });
                                     cur_pos = next_pos;
                                 }
                             }
-                            ControlMsgHelper::send_touch(
-                                &ctx.cs_tx,
-                                MotionEventAction::Up,
-                                pointer_id,
-                                ctx.original_size,
-                                cur_pos,
-                            );
+                            IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: cur_pos,
+            });
                             Ok::<(), MappingExecutionError>(())
                         })
                         .await;

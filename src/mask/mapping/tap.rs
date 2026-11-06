@@ -25,6 +25,7 @@ use crate::{
             MappingExecutionError, MappingLifecycleStart, MappingLifecycleState,
             make_mapping_execution_context, run_script_hook, run_with_hooks,
         },
+        pipeline::{Intent, IntentSender},
         script::{BindMappingScriptHooks, MappingScriptHooks},
         script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
         utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
@@ -60,13 +61,11 @@ pub fn cleanup_tap_on_stop(
                 continue;
             };
             let mapping = mapping.as_ref_singletap();
-            ControlMsgHelper::send_touch(
-                &cs_tx_res.0,
-                MotionEventAction::Up,
-                mapping.pointer_id,
-                original_size,
-                random_pos,
-            );
+            IntentSender::new(cs_tx_res.0.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: mapping.pointer_id,
+                pos: random_pos,
+            });
         }
     } else {
         active_single_tap.0.clear();
@@ -173,13 +172,11 @@ fn apply_single_tap_down(
         mapping.position.into(),
         Vec2::new(mapping.random_offset_x, mapping.random_offset_y),
     );
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Down,
-        mapping.pointer_id,
-        original_size,
-        random_pos,
-    );
+    IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: mapping.pointer_id,
+                pos: random_pos,
+            });
     active_single_tap.0.insert(action, random_pos);
 }
 
@@ -191,13 +188,11 @@ fn apply_single_tap_up(
     original_size: Vec2,
 ) -> bool {
     if let Some(random_pos) = active_single_tap.0.remove(action) {
-        ControlMsgHelper::send_touch(
-            &cs_tx.0,
-            MotionEventAction::Up,
-            mapping.pointer_id,
-            original_size,
-            random_pos,
-        );
+        IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: mapping.pointer_id,
+                pos: random_pos,
+            });
         true
     } else {
         false
@@ -352,21 +347,17 @@ pub fn handle_single_tap(
                         );
                         runtime.spawn_background_task(move |_ctx| async move {
                             let result = run_with_hooks(hooks, exec_ctx, move |ctx| async move {
-                                ControlMsgHelper::send_touch(
-                                    &ctx.cs_tx,
-                                    MotionEventAction::Down,
-                                    pointer_id,
-                                    ctx.original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
                                 sleep(duration).await;
-                                ControlMsgHelper::send_touch(
-                                    &ctx.cs_tx,
-                                    MotionEventAction::Up,
-                                    pointer_id,
-                                    ctx.original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
                                 Ok::<(), MappingExecutionError>(())
                             })
                             .await;
@@ -528,22 +519,18 @@ fn spawn_repeat_tap_once(
 ) {
     let cs_tx = cs_tx.0.clone();
     let random_pos = random_offset_vec2(original_pos, random_offset);
-    ControlMsgHelper::send_touch(
-        &cs_tx,
-        MotionEventAction::Down,
-        pointer_id,
-        original_size,
-        random_pos,
-    );
+    IntentSender::new(cs_tx.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
     runtime.spawn_background_task(move |_ctx| async move {
         sleep(duration).await;
-        ControlMsgHelper::send_touch(
-            &cs_tx,
-            MotionEventAction::Up,
-            pointer_id,
-            original_size,
-            random_pos,
-        );
+        IntentSender::new(cs_tx.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
     });
 }
 
@@ -676,21 +663,17 @@ pub fn handle_repeat_tap(
 
                             if let Some(release) = pending_release {
                                 let random_pos = random_offset_vec2(original_pos, random_offset);
-                                ControlMsgHelper::send_touch(
-                                    &exec_ctx.cs_tx,
-                                    MotionEventAction::Down,
-                                    pointer_id,
-                                    original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(exec_ctx.cs_tx.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
                                 sleep(duration).await;
-                                ControlMsgHelper::send_touch(
-                                    &exec_ctx.cs_tx,
-                                    MotionEventAction::Up,
-                                    pointer_id,
-                                    original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(exec_ctx.cs_tx.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
 
                                 if !after_script_ast.empty {
                                     let mut after_exec_ctx = exec_ctx.clone();
@@ -866,21 +849,17 @@ pub fn handle_multiple_tap(
                                 let random_pos =
                                     random_offset_vec2(item.position.into(), random_offset);
                                 sleep(Duration::from_millis(item.wait)).await;
-                                ControlMsgHelper::send_touch(
-                                    &ctx.cs_tx,
-                                    MotionEventAction::Down,
-                                    pointer_id,
-                                    ctx.original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
                                 sleep(Duration::from_millis(item.duration)).await;
-                                ControlMsgHelper::send_touch(
-                                    &ctx.cs_tx,
-                                    MotionEventAction::Up,
-                                    pointer_id,
-                                    ctx.original_size,
-                                    random_pos,
-                                );
+                                IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: random_pos,
+            });
                             }
                             Ok::<(), MappingExecutionError>(())
                         })

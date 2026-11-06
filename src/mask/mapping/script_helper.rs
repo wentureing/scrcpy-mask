@@ -27,6 +27,7 @@ use crate::mask::mapping::{
     cursor::{ActiveCursorFpsConfig, CursorPosition, CursorState, NormalCursorCapture},
     free_look,
     direction_pad::BlockDirectionPad,
+    pipeline::{Intent, IntentSender},
     fire::{
         ActiveFireMap, enter_fps_mode, exit_fps_mode, spawn_fire_after_hooks_for_external_release,
     },
@@ -143,23 +144,29 @@ async fn execute_script_action(
             position,
             tap_default,
         } => {
-            ControlMsgHelper::send_touch(
-                ctx.cs_tx,
-                action,
-                pointer_id,
-                ctx.original_size,
-                position,
-            );
+            let intent = match action {
+                MotionEventAction::Down => Intent::Down {
+                    pointer_id,
+                    pos: position,
+                },
+                MotionEventAction::Up => Intent::Up {
+                    pointer_id,
+                    pos: position,
+                },
+                MotionEventAction::Move => Intent::Move {
+                    pointer_id,
+                    pos: position,
+                },
+            };
+            IntentSender::new(ctx.cs_tx.clone(), ctx.original_size).send(intent);
 
             if tap_default {
                 tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-                ControlMsgHelper::send_touch(
-                    ctx.cs_tx,
-                    MotionEventAction::Up,
-                    pointer_id,
-                    ctx.original_size,
-                    position,
-                );
+                IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: position,
+            });
             }
         }
         ScriptAction::Swipe {
@@ -168,13 +175,11 @@ async fn execute_script_action(
             points,
         } => {
             let mut cur_pos = points[0];
-            ControlMsgHelper::send_touch(
-                ctx.cs_tx,
-                MotionEventAction::Down,
-                pointer_id,
-                ctx.original_size,
-                cur_pos,
-            );
+            IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: cur_pos,
+            });
             for next_pos in points.into_iter().skip(1) {
                 let steps = build_single_segment_swipe_intermediate_points(
                     cur_pos,
@@ -183,24 +188,20 @@ async fn execute_script_action(
                     interval,
                 );
                 for step in steps {
-                    ControlMsgHelper::send_touch(
-                        ctx.cs_tx,
-                        MotionEventAction::Move,
-                        pointer_id,
-                        ctx.original_size,
-                        step.pos,
-                    );
+                    IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Move {
+                pointer_id: pointer_id,
+                pos: step.pos,
+            });
                     tokio::time::sleep(std::time::Duration::from_millis(step.wait_ms)).await;
                 }
                 cur_pos = next_pos;
             }
-            ControlMsgHelper::send_touch(
-                ctx.cs_tx,
-                MotionEventAction::Up,
-                pointer_id,
-                ctx.original_size,
-                cur_pos,
-            );
+            IntentSender::new(ctx.cs_tx.clone(), ctx.original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: cur_pos,
+            });
         }
         ScriptAction::Key {
             keycode,

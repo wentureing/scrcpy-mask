@@ -14,7 +14,8 @@ use crate::{
     input_effects::InputEffects,
     mask::{
         mapping::{
-            MappingState, free_look::FreeLookState, mask_not_resizing, utils::ControlMsgHelper,
+            MappingState, free_look::FreeLookState, mask_not_resizing,
+            pipeline::{Intent, IntentSender}, utils::ControlMsgHelper,
             view_motion::ViewMotion,
         },
         mask_command::{MaskSize, TitlebarState},
@@ -266,13 +267,11 @@ pub fn release_fps_touches(
     active_pos: Vec2,
 ) {
     if fps_config.touch_active {
-        ControlMsgHelper::send_touch(
-            cs_tx,
-            MotionEventAction::Up,
-            fps_config.active_pointer_id,
-            mask_size,
-            active_pos,
-        );
+        IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: fps_config.active_pointer_id,
+                pos: active_pos,
+            });
         fps_config.touch_active = false;
     }
     if let Some(pending) = fps_config.pending_touch.take() {
@@ -284,13 +283,11 @@ pub fn release_fps_touches(
             | PendingFpsTouch::Overlap {
                 pointer_id, pos, ..
             } => {
-                ControlMsgHelper::send_touch(
-                    cs_tx,
-                    MotionEventAction::Up,
-                    pointer_id,
-                    mask_size,
-                    pos,
-                );
+                IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: pos,
+            });
             }
         }
     }
@@ -303,13 +300,11 @@ pub fn restore_fps_touch(
 ) {
     fps_config.reset_touch_state();
     fps_config.touch_active = true;
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Down,
-        fps_config.active_pointer_id,
-        fps_config.original_size,
-        fps_config.original_pos,
-    );
+    IntentSender::new(cs_tx.clone(), fps_config.original_size)
+            .send(Intent::Down {
+                pointer_id: fps_config.active_pointer_id,
+                pos: fps_config.original_pos,
+            });
 }
 
 fn handle_cursor_normal(
@@ -976,31 +971,25 @@ fn handle_normal_left_click(
         return;
     }
     if mouse_button_input.just_pressed(MouseButton::Left) {
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Down,
-            0,
-            mask_size.0,
-            cursor_pos.0,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Down {
+                pointer_id: 0,
+                pos: cursor_pos.0,
+            });
         return;
     } else if mouse_button_input.pressed(MouseButton::Left) {
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Move,
-            0,
-            mask_size.0,
-            cursor_pos.0,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Move {
+                pointer_id: 0,
+                pos: cursor_pos.0,
+            });
         return;
     } else if mouse_button_input.just_released(MouseButton::Left) {
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Up,
-            0,
-            mask_size.0,
-            cursor_pos.0,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Up {
+                pointer_id: 0,
+                pos: cursor_pos.0,
+            });
         return;
     }
 }

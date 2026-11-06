@@ -30,6 +30,7 @@ use crate::{
                 run_script_hook,
             },
             mapping_trigger,
+            pipeline::{Intent, IntentSender},
             script::{BindMappingScriptHooks, MappingScriptHooks},
             script_helper::{ScriptRuntimeCommandSender, ScriptSharedState},
             utils::{ControlMsgHelper, Position, default_random_offset, random_offset_vec2},
@@ -159,13 +160,11 @@ pub fn enter_fps_mode(
     fps_config.touch_mode = mapping.touch_mode;
     fps_config.touch_active = true;
 
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Down,
-        mapping.pointer_id,
-        original_size,
-        original_pos,
-    );
+    IntentSender::new(cs_tx.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: mapping.pointer_id,
+                pos: original_pos,
+            });
     next_state.set(CursorState::Fps);
 }
 
@@ -229,20 +228,16 @@ fn send_interaction_tap(
     position: Position,
 ) {
     let position = position.into();
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Down,
-        pointer_id,
-        original_size,
-        position,
-    );
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Up,
-        pointer_id,
-        original_size,
-        position,
-    );
+    IntentSender::new(cs_tx.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: position,
+            });
+    IntentSender::new(cs_tx.clone(), original_size)
+            .send(Intent::Up {
+                pointer_id: pointer_id,
+                pos: position,
+            });
 }
 
 pub fn handle_fps(
@@ -429,13 +424,11 @@ fn release_active_fire(
     let mut interrupted_fps_control = false;
     for (action, fire_item) in active_map.0.drain() {
         interrupted_fps_control |= !fire_item.preserve_fps_control;
-        ControlMsgHelper::send_touch(
-            cs_tx,
-            MotionEventAction::Up,
-            fire_item.pointer_id,
-            mask_size,
-            fire_item.current_pos,
-        );
+        IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: fire_item.pointer_id,
+                pos: fire_item.current_pos,
+            });
         released_actions.push(action);
     }
     ReleasedFireActions {
@@ -547,13 +540,11 @@ pub fn handle_fire_trigger(
         }
         fire_item.current_pos +=
             ViewMotion::new(effects, fire_item.sensitivity, 0.0).delta(raw_delta);
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Move,
-            fire_item.pointer_id,
-            mask_size.0,
-            fire_item.current_pos, // fire item cursor pos
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Move {
+                pointer_id: fire_item.pointer_id,
+                pos: fire_item.current_pos,
+            });
     }
 }
 
@@ -609,13 +600,11 @@ fn apply_fire_begin(
     let sensitivity: Vec2 = (mapping.sensitivity_x, mapping.sensitivity_y).into();
     let current_pos = random_pos / original_size * mask_size;
 
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Down,
-        mapping.pointer_id,
-        original_size,
-        random_pos,
-    );
+    IntentSender::new(cs_tx.0.clone(), original_size)
+            .send(Intent::Down {
+                pointer_id: mapping.pointer_id,
+                pos: random_pos,
+            });
     active_map.0.insert(
         action,
         FireItem {
@@ -634,13 +623,11 @@ fn release_fire_item(
     mask_size: Vec2,
     fire_item: FireItem,
 ) -> Option<Vec2> {
-    ControlMsgHelper::send_touch(
-        cs_tx,
-        MotionEventAction::Up,
-        fire_item.pointer_id,
-        mask_size,
-        fire_item.current_pos,
-    );
+    IntentSender::new(cs_tx.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: fire_item.pointer_id,
+                pos: fire_item.current_pos,
+            });
     if fire_item.preserve_fps_control {
         return None;
     }

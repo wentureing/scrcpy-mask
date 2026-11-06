@@ -20,6 +20,7 @@ use crate::{
             binding::{ButtonBinding, ValidateMappingConfig},
             config::ActiveMappingConfig,
             mapping_trigger,
+            pipeline::{Intent, IntentSender},
             cursor::{CursorPosition, CursorState, NormalCursorCapture},
             executor::{
                 MappingLifecycleStart, MappingLifecycleState, make_mapping_execution_context,
@@ -53,13 +54,11 @@ pub fn cleanup_observation_on_stop(
 ) {
     for (action, item) in active_map.0.drain() {
         let delta = item.view_delta(cursor_pos.0);
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Up,
-            item.pointer_id,
-            mask_size.0,
-            item.mask_pos + delta,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Up {
+                pointer_id: item.pointer_id,
+                pos: item.mask_pos + delta,
+            });
         normal_cursor_capture.release(&observation_capture_owner(&action));
     }
 
@@ -216,13 +215,11 @@ fn apply_observation_down(
     let pointer_id = mapping.pointer_id;
     let mask_pos = original_pos / original_size * mask_size;
 
-    ControlMsgHelper::send_touch(
-        &cs_tx.0,
-        MotionEventAction::Down,
-        pointer_id,
-        mask_size,
-        mask_pos,
-    );
+    IntentSender::new(cs_tx.0.clone(), mask_size)
+            .send(Intent::Down {
+                pointer_id: pointer_id,
+                pos: mask_pos,
+            });
     active_map.0.insert(
         action,
         ObservationItem {
@@ -243,13 +240,11 @@ fn apply_observation_up(
 ) -> bool {
     if let Some(item) = active_map.0.remove(action) {
         let delta = item.view_delta(cursor_pos);
-        ControlMsgHelper::send_touch(
-            &cs_tx.0,
-            MotionEventAction::Up,
-            item.pointer_id,
-            mask_size,
-            item.mask_pos + delta,
-        );
+        IntentSender::new(cs_tx.0.clone(), mask_size)
+            .send(Intent::Up {
+                pointer_id: item.pointer_id,
+                pos: item.mask_pos + delta,
+            });
         true
     } else {
         false
@@ -264,13 +259,11 @@ pub fn handle_observation_trigger(
 ) {
     for (_, item) in active_map.0.iter_mut() {
         let delta = item.view_delta(cursor_pos.0);
-        ControlMsgHelper::send_touch(
-            &cs_tx_res.0,
-            MotionEventAction::Move,
-            item.pointer_id,
-            mask_size.0,
-            item.mask_pos + delta,
-        );
+        IntentSender::new(cs_tx_res.0.clone(), mask_size.0)
+            .send(Intent::Move {
+                pointer_id: item.pointer_id,
+                pos: item.mask_pos + delta,
+            });
     }
 }
 
