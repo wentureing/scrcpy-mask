@@ -34,7 +34,7 @@ env:
 jobs:
   # 节流闸门：当前 run（含自己）已超过 3 个在跑/排队时，本次直接跳过，避免堆积。
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -61,7 +61,7 @@ jobs:
   check:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 60
     steps:
       - name: Checkout codes
@@ -173,7 +173,7 @@ jobs:
   test:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 90
     steps:
       - name: Checkout codes
@@ -234,7 +234,7 @@ jobs:
   package:
     needs: [gate, check, test]
     if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))) }}
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 240
     steps:
       - name: Checkout codes
