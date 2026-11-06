@@ -154,6 +154,18 @@ jobs:
         shell: pwsh
         run: ./scripts/check-windows.ps1
 
+      # P0：测试进 check（原先只有 package job 跑，且带 `-- scrcpy::` 过滤，
+      # 导致 54/67 个测试从不执行）。这里跑全部 lib 测试，并先打印测试清单，
+      # 便于在日志里确认"到底跑了哪些"，避免再次静默漏跑。
+      - name: Cargo test (all lib tests)
+        shell: pwsh
+        run: |
+          . ./scripts/ffmpeg-env.ps1
+          cargo test --lib --locked -- --list
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --lib --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   # 按需出包：
   #   1) Actions 页面手动 Run 并勾选 package；
   #   2) 或者 commit message 里带 [package]（这样"明确要求出包"时无需 token 也能直接跑）。
@@ -264,7 +276,7 @@ jobs:
         shell: pwsh
         run: |
           . ./scripts/ffmpeg-env.ps1
-          cargo test --release --lib --locked -- scrcpy::
+          cargo test --release --lib --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build package
