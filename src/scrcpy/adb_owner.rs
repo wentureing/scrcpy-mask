@@ -6,7 +6,7 @@
 //! 实现只依赖 `std::process::Command`（`netstat` + PowerShell CIM），**不引入新 crate**。
 //! 非 Windows 平台一律返回 `Unsupported`，只记日志、不做判定（安全降级）。
 
-use std::path::Path;
+#[cfg(windows)]
 use std::process::Command;
 
 /// adb server 的归属。
@@ -84,9 +84,10 @@ fn same_path(a: &str, b: &str) -> bool {
     if na == nb {
         return true;
     }
-    // 一方是相对路径时，退化为"文件名 + 末级目录"比较
-    match (Path::new(&na).file_name(), Path::new(&nb).file_name()) {
-        (Some(fa), Some(fb)) => fa == fb && na.ends_with(&nb) || nb.ends_with(&na),
+    // 路径存在时用 canonicalize 消除 `..` / 符号链接差异；
+    // 任一侧无法解析就判为"不同"（保守：宁可不动外部 adb）。
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => normalized(&ca.to_string_lossy()) == normalized(&cb.to_string_lossy()),
         _ => false,
     }
 }
@@ -115,11 +116,13 @@ fn process_image_path(pid: u32) -> Option<String> {
 }
 
 #[cfg(not(windows))]
+#[allow(dead_code)]
 fn listener_pid(_port: u16) -> Option<u32> {
     None
 }
 
 #[cfg(not(windows))]
+#[allow(dead_code)]
 fn process_image_path(_pid: u32) -> Option<String> {
     None
 }
