@@ -31,6 +31,19 @@ pub enum TouchBackend {
     Uhid,
 }
 
+/// 退出时是否清理 adb server（`docs/22` §22.19 D26/D27）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdbCleanupPolicy {
+    /// 只清理"本程序启动的 adb"；外部 adb 不动（默认，最安全）
+    #[default]
+    Auto,
+    /// 退出时一律 `kill-server`
+    Always,
+    /// 从不清理 adb server
+    Never,
+}
+
 #[cfg(test)]
 mod uhid_config_tests {
     use super::*;
@@ -92,6 +105,8 @@ pub struct LocalConfig {
     // adb
     pub adb_path: String,
     pub adb_connect_address: String,
+    /// 退出时是否清理 adb server（Auto = 只清理本程序启动的）
+    pub adb_cleanup_policy: AdbCleanupPolicy,
     // mask
     pub always_on_top: bool,
     pub titlebar_visible: bool,
@@ -146,6 +161,7 @@ impl Default for LocalConfig {
         Self {
             adb_path: default_adb_path(),
             adb_connect_address: String::new(),
+            adb_cleanup_policy: AdbCleanupPolicy::default(),
             web_port: 27799,
             web_bind_addr: default_web_bind_addr(),
             controller_port: 27798,
@@ -326,6 +342,7 @@ impl LocalConfig {
         (controller_port, u16),
         (adb_path, String),
         (adb_connect_address, String),
+        (adb_cleanup_policy, AdbCleanupPolicy),
         (always_on_top, bool),
         (titlebar_visible, bool),
         (vertical_mask_height, u32),

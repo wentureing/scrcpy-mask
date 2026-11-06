@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 use tokio::sync::oneshot;
 
 use crate::{
-    config::{AUDIO_BIT_RATE_MIN, LocalConfig, TouchBackend},
+    config::{AUDIO_BIT_RATE_MIN, AdbCleanupPolicy, LocalConfig, TouchBackend},
     is_available_language,
     mask::mask_command::MaskCommand,
     scrcpy::{
@@ -235,6 +235,15 @@ async fn update_config(
                     "web.config.adbConnectAddressMustBeString"
                 )));
             }
+        }
+        "adb_cleanup_policy" => {
+            let policy: AdbCleanupPolicy = serde_json::from_value(payload.value.clone())
+                .map_err(|_| WebServerError::bad_request("adb_cleanup_policy must be auto/always/never"))?;
+            LocalConfig::set_adb_cleanup_policy(policy);
+            return Ok(JsonResponse::success(
+                format!("adb 清理策略已设为 {:?}", policy),
+                None,
+            ));
         }
         "controller_port" => {
             if let Some(value) = payload.value.as_u64() {

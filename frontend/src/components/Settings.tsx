@@ -17,6 +17,7 @@ import {
 import {
   forceSetLocalConfig,
   setAdbPath,
+  setAdbCleanupPolicy,
   setControllerPort,
   setVerticalPosition,
   setverticalMaskHeight,
@@ -541,6 +542,23 @@ export default function Settings() {
             <Switch
               checked={localConfig.stayAwake}
               onChange={(v) => dispatch(setStayAwake(v))}
+            />
+          </ItemBox>
+          <ItemBox
+            label={t("settings.adbCleanupPolicy")}
+            tooltip={t("settings.adbCleanupPolicyTip")}
+          >
+            <Select
+              className="w-sm"
+              value={localConfig.adbCleanupPolicy}
+              options={[
+                { value: "auto", label: t("settings.adbCleanupAuto") },
+                { value: "always", label: t("settings.adbCleanupAlways") },
+                { value: "never", label: t("settings.adbCleanupNever") },
+              ]}
+              onChange={(v) =>
+                dispatch(setAdbCleanupPolicy(v as "auto" | "always" | "never"))
+              }
             />
           </ItemBox>
           <ItemBox

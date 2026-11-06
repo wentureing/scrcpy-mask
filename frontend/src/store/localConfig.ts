@@ -49,6 +49,7 @@ export interface LocalConfigState {
   // adb
   adbPath: string;
   adbConnectAddress: string;
+  adbCleanupPolicy: "auto" | "always" | "never";
   // mask area
   alwaysOnTop: boolean;
   titlebarVisible: boolean;
@@ -101,6 +102,7 @@ const initialState: LocalConfigState = {
   controllerPort: 0,
   adbPath: "",
   adbConnectAddress: "",
+  adbCleanupPolicy: "auto",
   alwaysOnTop: true,
   titlebarVisible: true,
   verticalMaskHeight: 0,
@@ -164,6 +166,13 @@ const localConfigSlice = createSlice({
     setAdbConnectAddress: (state, action: PayloadAction<string>) => {
       state.adbConnectAddress = action.payload;
       updateLocalConfig("adb_connect_address", action.payload, 0, false);
+    },
+    setAdbCleanupPolicy: (
+      state,
+      action: PayloadAction<"auto" | "always" | "never">,
+    ) => {
+      state.adbCleanupPolicy = action.payload;
+      updateLocalConfig("adb_cleanup_policy", action.payload);
     },
     setAlwaysOnTop: (state, action: PayloadAction<boolean>) => {
       state.alwaysOnTop = action.payload;
@@ -305,6 +314,7 @@ export const {
   setControllerPort,
   setAdbPath,
   setAdbConnectAddress,
+  setAdbCleanupPolicy,
   setAlwaysOnTop,
   setTitlebarVisible,
   setverticalMaskHeight,

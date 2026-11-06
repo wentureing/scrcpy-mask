@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 pub mod adb;
+pub mod adb_owner;
 pub mod audio;
 pub mod connection;
 pub mod constant;
