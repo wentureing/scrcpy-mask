@@ -867,6 +867,56 @@ async fn update_config(
                 "virtual_cursor_visible must be bool",
             ));
         }
+        "access_rules" => {
+            let Some(value) = payload.value.as_array() else {
+                return Err(WebServerError::bad_request(
+                    "access_rules must be an array",
+                ));
+            };
+            let mut rules = Vec::with_capacity(value.len());
+            for item in value {
+                let Some(obj) = item.as_object() else {
+                    return Err(WebServerError::bad_request(
+                        "access_rules 的每一项都必须是对象",
+                    ));
+                };
+                let mapping_id = obj
+                    .get("mapping_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if mapping_id.is_empty() {
+                    return Err(WebServerError::bad_request(
+                        "access_rules[].mapping_id 不能为空",
+                    ));
+                }
+                let when = obj
+                    .get("when")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if crate::access_rules::normalize_state(when).is_none() {
+                    return Err(WebServerError::bad_request(format!(
+                        "access_rules[].when 不支持状态 {}（可选：free_look_active / free_look_inactive / fps / normal / observation / raw_input）",
+                        when
+                    )));
+                }
+                let allow = obj
+                    .get("allow")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                rules.push(crate::access_rules::AccessRule {
+                    mapping_id: mapping_id.to_string(),
+                    when: when.to_string(),
+                    allow,
+                });
+            }
+            LocalConfig::set_access_rules(rules.clone());
+            return Ok(JsonResponse::success(
+                format!("访问规则已更新（{} 条）", rules.len()),
+                None,
+            ));
+        }
         _ => Err(WebServerError::bad_request(format!(
             "{}: {}",
             t!("web.config.invalidMappingKey"),

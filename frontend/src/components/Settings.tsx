@@ -216,6 +216,63 @@ export default function Settings() {
     }
   }
 
+  // ---- 访问规则（docs/26）：映射 id + 单一状态 + 允许/不允许 ----
+  const [mappingIds, setMappingIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const file = localConfig.activeMappingFile;
+    if (!file) {
+      setMappingIds([]);
+      return;
+    }
+    let cancelled = false;
+    requestPost<{ mapping_config: { mappings?: Record<string, unknown> } }>(
+      "/api/mapping/read_mapping",
+      { file },
+    )
+      .then((res) => {
+        if (!cancelled) {
+          setMappingIds(Object.keys(res.data.mapping_config?.mappings ?? {}));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMappingIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localConfig.activeMappingFile]);
+
+  const accessStateOptions = [
+    {
+      value: "free_look_inactive",
+      label: t("settings.accessStateFreeLookInactive"),
+    },
+    {
+      value: "free_look_active",
+      label: t("settings.accessStateFreeLookActive"),
+    },
+    { value: "fps", label: "FPS" },
+    { value: "normal", label: t("settings.accessStateNormal") },
+    { value: "observation", label: t("settings.accessStateObservation") },
+    { value: "raw_input", label: "RawInput" },
+  ];
+
+  async function saveAccessRules(
+    next: { mapping_id: string; when: string; allow: boolean }[],
+  ) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "access_rules",
+        value: next,
+      });
+      dispatch(forceSetLocalConfig({ access_rules: next }));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
   async function loadLocalConfig() {
     dispatch(setIsLoading(true));
     try {
@@ -418,6 +475,75 @@ export default function Settings() {
               checked={localConfig.virtualCursorVisible ?? false}
               onChange={changeVirtualCursorVisible}
             />
+          </SettingBox>
+          <SettingBox
+            label={t("settings.accessRules")}
+            tooltip={t("settings.accessRulesTip")}
+          >
+            <Flex vertical gap="small" className="w-full">
+              {(localConfig.accessRules ?? []).map((rule, index) => (
+                <Flex key={index} gap="small" align="center" wrap>
+                  <Select
+                    className="w-sm"
+                    value={rule.mapping_id}
+                    options={mappingIds.map((id) => ({ value: id, label: id }))}
+                    onChange={(v) => {
+                      const next = [...(localConfig.accessRules ?? [])];
+                      next[index] = { ...next[index], mapping_id: v };
+                      saveAccessRules(next);
+                    }}
+                  />
+                  <Select
+                    className="w-sm"
+                    value={rule.when}
+                    options={accessStateOptions}
+                    onChange={(v) => {
+                      const next = [...(localConfig.accessRules ?? [])];
+                      next[index] = { ...next[index], when: v };
+                      saveAccessRules(next);
+                    }}
+                  />
+                  <Switch
+                    checked={rule.allow}
+                    checkedChildren={t("settings.accessAllow")}
+                    unCheckedChildren={t("settings.accessDeny")}
+                    onChange={(v) => {
+                      const next = [...(localConfig.accessRules ?? [])];
+                      next[index] = { ...next[index], allow: v };
+                      saveAccessRules(next);
+                    }}
+                  />
+                  <Button
+                    size="small"
+                    danger
+                    onClick={() => {
+                      const next = (localConfig.accessRules ?? []).filter(
+                        (_, i) => i !== index,
+                      );
+                      saveAccessRules(next);
+                    }}
+                  >
+                    {t("settings.accessRuleRemove")}
+                  </Button>
+                </Flex>
+              ))}
+              <Button
+                size="small"
+                onClick={() => {
+                  const next = [
+                    ...(localConfig.accessRules ?? []),
+                    {
+                      mapping_id: mappingIds[0] ?? "",
+                      when: "free_look_inactive",
+                      allow: false,
+                    },
+                  ];
+                  saveAccessRules(next);
+                }}
+              >
+                {t("settings.accessRuleAdd")}
+              </Button>
+            </Flex>
           </SettingBox>
           <SettingBox label={t("settings.horizontalMaskWidth")}>
             <InputNumber
