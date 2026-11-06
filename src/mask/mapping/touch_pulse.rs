@@ -13,7 +13,6 @@ use bevy::math::Vec2;
 
 use crate::{
     mask::mapping::pipeline::{Intent, IntentSender},
-    scrcpy::constant::MotionEventAction,
     utils::ChannelSenderCS,
 };
 
@@ -134,6 +133,7 @@ impl TouchPulse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scrcpy::constant::MotionEventAction;
     use crate::scrcpy::control_msg::ScrcpyControlMsg;
 
     fn pulse() -> TouchPulse {
