@@ -5,7 +5,8 @@
     "buttonTsxFiles": 13,
     "devicesTsxLines": 789,
     "mappingsTsxLines": 1311,
-    "settingsTsxLines": 932
+    "settingsTsxLines": 932,
+    "sendTouchCallSites": 67
   },
   "i18nMissing": {}
 }

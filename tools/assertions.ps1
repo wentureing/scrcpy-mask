@@ -142,6 +142,14 @@ function Get-LineCount([string]$RelativePath) {
     return (Get-Content $p).Count
 }
 
+# 发射器收口指标（docs/21 S6.6 / docs/27 A2）：
+# 统计 `ControlMsgHelper::send_touch(` 的调用点数量，只允许下降（ratchet）。
+# A1（S6.1a）完成后应显著减少；回升说明有人绕过了 IntentSender。
+$sendTouchCalls = @(
+    Get-ChildItem -Path (Join-Path $Root 'src') -Recurse -Include *.rs -File |
+        Select-String -Pattern 'ControlMsgHelper::send_touch\(' -AllMatches
+).Count
+
 $structure = [ordered]@{
     mappingButtonDragFactoryCalls = [int]$dragCalls
     buttonTsxTotalLines           = [int]$buttonLines
@@ -149,6 +157,7 @@ $structure = [ordered]@{
     devicesTsxLines               = [int](Get-LineCount 'frontend/src/components/Devices.tsx')
     mappingsTsxLines              = [int](Get-LineCount 'frontend/src/components/mappings/Mappings.tsx')
     settingsTsxLines              = [int](Get-LineCount 'frontend/src/components/Settings.tsx')
+    sendTouchCallSites            = [int]$sendTouchCalls
 }
 
 # ---------- 基线 ----------
