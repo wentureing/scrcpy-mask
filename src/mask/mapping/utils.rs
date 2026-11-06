@@ -965,3 +965,87 @@ pub fn handle_direction_jitter_path(
     *current_jitter = next_jitter;
     *next_jitter_at = next_jitter_deadline();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_distance_returns_no_intermediate_points() {
+        // 起终点相同 / 距离不足 1px → 不产生中间点
+        assert!(build_single_segment_swipe_intermediate_points(
+            Vec2::new(10.0, 10.0),
+            Vec2::new(10.0, 10.0),
+            SingleSwipeStrategy::Linear,
+            100,
+        )
+        .is_empty());
+        assert!(build_single_segment_swipe_intermediate_points(
+            Vec2::new(10.0, 10.0),
+            Vec2::new(10.5, 10.0),
+            SingleSwipeStrategy::Linear,
+            100,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn point_count_is_clamped_between_five_and_twenty_five() {
+        // distance 14 → point_count=5 → steps=4
+        let short = build_single_segment_swipe_intermediate_points(
+            Vec2::ZERO,
+            Vec2::new(14.0, 0.0),
+            SingleSwipeStrategy::Linear,
+            100,
+        );
+        assert_eq!(short.len(), 4);
+        // distance 1000 → point_count 被 clamp 到 25 → steps=24
+        let long = build_single_segment_swipe_intermediate_points(
+            Vec2::ZERO,
+            Vec2::new(1000.0, 0.0),
+            SingleSwipeStrategy::Linear,
+            100,
+        );
+        assert_eq!(long.len(), 24);
+    }
+
+    #[test]
+    fn linear_points_are_collinear_and_waits_sum_to_duration() {
+        let start = Vec2::new(100.0, 200.0);
+        let delta = Vec2::new(140.0, 0.0);
+        let steps = build_single_segment_swipe_intermediate_points(
+            start,
+            start + delta,
+            SingleSwipeStrategy::Linear,
+            100,
+        );
+        // distance 140 → point_count 10 → steps 9
+        assert_eq!(steps.len(), 9);
+        for step in &steps {
+            let offset = step.pos - start;
+            assert!(
+                offset.perp_dot(delta).abs() < 1e-3,
+                "linear points must be collinear"
+            );
+        }
+        let total_wait: u64 = steps.iter().map(|s| s.wait_ms).sum();
+        assert_eq!(total_wait, 100, "waits must add up to duration");
+        let mut last_x = start.x;
+        for step in &steps {
+            assert!(step.pos.x > last_x, "points must advance monotonically");
+            last_x = step.pos.x;
+        }
+    }
+
+    #[test]
+    fn zero_duration_uses_default_wait() {
+        let steps = build_single_segment_swipe_intermediate_points(
+            Vec2::ZERO,
+            Vec2::new(14.0, 0.0),
+            SingleSwipeStrategy::Linear,
+            0,
+        );
+        assert_eq!(steps.len(), 4);
+        assert!(steps.iter().all(|s| s.wait_ms == 20));
+    }
+}
