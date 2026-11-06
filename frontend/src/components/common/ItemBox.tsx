@@ -25,6 +25,11 @@ type ItemBoxProps = PropsWithChildren<{
   label?: ReactNode;
   tooltip?: ReactNode;
   extra?: ReactNode;
+  /**
+   * 右侧等高说明（鼠标悬停整行时显示）。
+   * 只有设置页使用；映射弹窗不传，保持原有紧凑布局。
+   */
+  sideHint?: ReactNode;
 }> &
   ComponentProps<"div">;
 
@@ -32,11 +37,13 @@ export function ItemBox({
   label,
   tooltip,
   extra,
+  sideHint,
   children,
+  className,
   ...rest
 }: ItemBoxProps) {
-  return (
-    <div {...rest}>
+  const content = (
+    <>
       {label && (
         <Flex
           align="center"
@@ -54,6 +61,34 @@ export function ItemBox({
         </Flex>
       )}
       <div>{children}</div>
+    </>
+  );
+
+  // 无 sideHint：保持旧布局（映射设置弹窗用，避免布局变化）
+  if (!sideHint) {
+    return (
+      <div {...rest} className={className}>
+        {content}
+      </div>
+    );
+  }
+
+  // 有 sideHint：左侧内容 + 右侧等高等宽描述区（悬停显示）
+  return (
+    <div
+      {...rest}
+      className={`group ${className ?? ""}`}
+      style={{ ...rest.style }}
+    >
+      <Flex gap="middle" align="stretch">
+        <div className="flex-1 min-w-0">{content}</div>
+        <div
+          className="shrink-0 self-stretch flex items-center text-xs color-text-secondary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          style={{ width: 180 }}
+        >
+          {sideHint}
+        </div>
+      </Flex>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   AutoComplete,
   Badge,
   Button,
+  Collapse,
   Flex,
   Input,
   InputNumber,
@@ -58,7 +59,7 @@ import {
   setUpdateInfo,
 } from "../store/other";
 import { requestGet, requestPost } from "../utils";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import i18n, { languageOptions } from "../i18n";
 import { useMessageContext } from "../hooks";
 import {
@@ -68,6 +69,14 @@ import {
   InfoCircleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
+
+/**
+ * 设置页专用：把 tooltip 同时作为右侧"等高描述"（用例 12）。
+ * 鼠标悬停整行时右侧出现说明，避免只能靠问号图标才能看到。
+ */
+function SettingBox(props: ComponentProps<typeof ItemBox>) {
+  return <ItemBox {...props} sideHint={props.tooltip} />;
+}
 
 const videoCodecOptions = ["H264", "H265", "AV1"].map((v) => ({
   value: v,
@@ -225,22 +234,22 @@ export default function Settings() {
         </Flex>
         <h3 className="title-with-line-sub">{t("settings.title.basic")}</h3>
         <ItemBoxContainer className="mb-6">
-          <ItemBox label={t("settings.language")}>
+          <SettingBox label={t("settings.language")}>
             <Select
               className="w-sm"
               value={localConfig.language}
               options={languageOptions}
               onChange={(v) => dispatch(setLanguage(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.adbPath")}>
+          </SettingBox>
+          <SettingBox label={t("settings.adbPath")}>
             <Input
               className="w-sm"
               value={localConfig.adbPath}
               onChange={(e) => dispatch(setAdbPath(e.target.value))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.touchBackend")} extra={t("settings.touchBackendHint")}>
+          </SettingBox>
+          <SettingBox label={t("settings.touchBackend")} extra={t("settings.touchBackendHint")}>
             <Select
               className="w-sm"
               value={localConfig.touchBackend}
@@ -252,29 +261,29 @@ export default function Settings() {
               ]}
               onChange={changeTouchBackend}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.clipboardSync")}>
+          </SettingBox>
+          <SettingBox label={t("settings.clipboardSync")}>
             <Switch
               checked={localConfig.clipboardSync}
               onChange={(v) => dispatch(setClipboardSync(v))}
             />
-          </ItemBox>
+          </SettingBox>
         </ItemBoxContainer>
         <h3 className="title-with-line-sub">{t("settings.title.mask")}</h3>
         <ItemBoxContainer className="mb-6">
-          <ItemBox label={t("settings.alwaysOnTop")}>
+          <SettingBox label={t("settings.alwaysOnTop")}>
             <Switch
               checked={localConfig.alwaysOnTop}
               onChange={(v) => dispatch(setAlwaysOnTop(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.titlebarVisible")}>
+          </SettingBox>
+          <SettingBox label={t("settings.titlebarVisible")}>
             <Switch
               checked={localConfig.titlebarVisible}
               onChange={(v) => dispatch(setTitlebarVisible(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.mappingLabelOpacity")}>
+          </SettingBox>
+          <SettingBox label={t("settings.mappingLabelOpacity")}>
             <Slider
               className="w-sm"
               min={0}
@@ -283,8 +292,8 @@ export default function Settings() {
               onChange={(v) => dispatch(setMappingLabelOpacity(v))}
               value={localConfig.mappingLabelOpacity}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.freeLookEnabled")}
             tooltip={t("settings.freeLookEnabledTip")}
           >
@@ -292,8 +301,8 @@ export default function Settings() {
               checked={localConfig.freeLookEnabled}
               onChange={(v) => dispatch(setFreeLookEnabled(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.freeLookSensitivity")}>
+          </SettingBox>
+          <SettingBox label={t("settings.freeLookSensitivity")}>
             <Slider
               className="w-sm"
               min={0.1}
@@ -303,8 +312,8 @@ export default function Settings() {
               onChange={(v) => dispatch(setFreeLookSensitivity(v))}
               value={localConfig.freeLookEffects?.scale_x ?? 1}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("mappings.common.invertX.label")}
             tooltip={t("mappings.common.invertX.hint")}
           >
@@ -313,8 +322,8 @@ export default function Settings() {
               disabled={!localConfig.freeLookEnabled}
               onChange={(v) => dispatch(setFreeLookInvertX(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("mappings.common.invertY.label")}
             tooltip={t("mappings.common.invertY.hint")}
           >
@@ -323,8 +332,8 @@ export default function Settings() {
               disabled={!localConfig.freeLookEnabled}
               onChange={(v) => dispatch(setFreeLookInvertY(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.freeLookExitKey")}
             tooltip={t("settings.freeLookExitKeyTip")}
           >
@@ -334,8 +343,8 @@ export default function Settings() {
               options={freeLookExitKeyOptions}
               onChange={changeFreeLookExitKey}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.horizontalMaskWidth")}>
+          </SettingBox>
+          <SettingBox label={t("settings.horizontalMaskWidth")}>
             <InputNumber
               className="w-sm"
               controls={false}
@@ -345,8 +354,8 @@ export default function Settings() {
                 v !== null && dispatch(sethorizontalMaskWidth(v))
               }
             />
-          </ItemBox>
-          <ItemBox label={t("settings.horizontalMaskPosition")}>
+          </SettingBox>
+          <SettingBox label={t("settings.horizontalMaskPosition")}>
             <Space.Compact className="w-sm">
               <InputNumber
                 prefix="X:"
@@ -379,8 +388,8 @@ export default function Settings() {
                 }
               />
             </Space.Compact>
-          </ItemBox>
-          <ItemBox label={t("settings.verticalMaskHeight")}>
+          </SettingBox>
+          <SettingBox label={t("settings.verticalMaskHeight")}>
             <InputNumber
               className="w-sm"
               controls={false}
@@ -388,8 +397,8 @@ export default function Settings() {
               value={localConfig.verticalMaskHeight}
               onChange={(v) => v !== null && dispatch(setverticalMaskHeight(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.verticalMaskPosition")}>
+          </SettingBox>
+          <SettingBox label={t("settings.verticalMaskPosition")}>
             <Space.Compact className="w-sm">
               <InputNumber
                 prefix="X:"
@@ -416,19 +425,19 @@ export default function Settings() {
                 }
               />
             </Space.Compact>
-          </ItemBox>
+          </SettingBox>
         </ItemBoxContainer>
         <h3 className="title-with-line-sub">{t("settings.title.video")}</h3>
         <ItemBoxContainer className="mb-6">
-          <ItemBox label={t("settings.videoCodec")}>
+          <SettingBox label={t("settings.videoCodec")}>
             <Select
               className="w-sm"
               value={localConfig.videoCodec}
               options={videoCodecOptions}
               onChange={(v) => dispatch(setVideoCodec(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.videoBitRate")}>
+          </SettingBox>
+          <SettingBox label={t("settings.videoBitRate")}>
             <InputNumber
               className="w-sm"
               controls={false}
@@ -437,8 +446,8 @@ export default function Settings() {
               value={localConfig.videoBitRate}
               onChange={(v) => v !== null && dispatch(setVideoBitRate(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.videoMaxSize")}
             tooltip={t("settings.zeroUnlimitedTip")}
           >
@@ -449,8 +458,8 @@ export default function Settings() {
               value={localConfig.videoMaxSize}
               onChange={(v) => v !== null && dispatch(setVideoMaxSize(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.videoMaxFps")}
             tooltip={t("settings.zeroUnlimitedTip")}
           >
@@ -461,8 +470,8 @@ export default function Settings() {
               value={localConfig.videoMaxFps}
               onChange={(v) => v !== null && dispatch(setVideoMaxFps(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.displayId")}
             tooltip={t("settings.displayIdTip")}
           >
@@ -473,8 +482,8 @@ export default function Settings() {
               value={localConfig.displayId}
               onChange={(v) => v !== null && dispatch(setDisplayId(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.newDisplayEnabled")}
             tooltip={t("settings.newDisplayEnabledTip")}
           >
@@ -482,15 +491,15 @@ export default function Settings() {
               checked={localConfig.newDisplayEnabled}
               onChange={(v) => dispatch(setNewDisplayEnabled(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.newDisplayUseMainSize")}>
+          </SettingBox>
+          <SettingBox label={t("settings.newDisplayUseMainSize")}>
             <Switch
               checked={localConfig.newDisplayUseMainSize}
               disabled={!localConfig.newDisplayEnabled}
               onChange={(v) => dispatch(setNewDisplayUseMainSize(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.newDisplaySize")}>
+          </SettingBox>
+          <SettingBox label={t("settings.newDisplaySize")}>
             <Space.Compact className="w-sm">
               <InputNumber
                 prefix="W:"
@@ -521,8 +530,8 @@ export default function Settings() {
                 }
               />
             </Space.Compact>
-          </ItemBox>
-          <ItemBox label={t("settings.newDisplayDpi")}>
+          </SettingBox>
+          <SettingBox label={t("settings.newDisplayDpi")}>
             <InputNumber
               className="w-sm"
               controls={false}
@@ -534,20 +543,20 @@ export default function Settings() {
               value={localConfig.newDisplayDpi}
               onChange={(v) => v !== null && dispatch(setNewDisplayDpi(v))}
             />
-          </ItemBox>
+          </SettingBox>
         </ItemBoxContainer>
 
         <h3 className="title-with-line-sub">{t("settings.title.audio")}</h3>
         <ItemBoxContainer className="mb-6">
-          <ItemBox label={t("settings.audioCodec")}>
+          <SettingBox label={t("settings.audioCodec")}>
             <Select
               className="w-sm"
               value={localConfig.audioCodec}
               options={audioCodecOptions}
               onChange={(v) => dispatch(setAudioCodec(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.audioBitRate")}>
+          </SettingBox>
+          <SettingBox label={t("settings.audioBitRate")}>
             <InputNumber
               className="w-sm"
               controls={false}
@@ -557,16 +566,16 @@ export default function Settings() {
               value={localConfig.audioBitRate}
               onChange={(v) => v !== null && dispatch(setAudioBitRate(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.audioSource")}>
+          </SettingBox>
+          <SettingBox label={t("settings.audioSource")}>
             <Select
               className="w-sm"
               value={localConfig.audioSource}
               options={audioSourceOptions}
               onChange={(v) => dispatch(setAudioSource(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.audioDup")}
             tooltip={t("settings.audioDupTip")}
           >
@@ -575,18 +584,25 @@ export default function Settings() {
               disabled={localConfig.audioSource !== "PLAYBACK"}
               onChange={(v) => dispatch(setAudioDup(v))}
             />
-          </ItemBox>
+          </SettingBox>
         </ItemBoxContainer>
 
-        <h3 className="title-with-line-sub">{t("settings.title.advance")}</h3>
-        <ItemBoxContainer className="mb-6">
-          <ItemBox label={t("settings.stayAwake")}>
+        {/* 用例 12：高级设置折叠起来，避免首屏全是低频选项 */}
+        <Collapse
+          className="mb-6"
+          items={[
+            {
+              key: "advance",
+              label: t("settings.title.advance"),
+              children: (
+                <ItemBoxContainer>
+          <SettingBox label={t("settings.stayAwake")}>
             <Switch
               checked={localConfig.stayAwake}
               onChange={(v) => dispatch(setStayAwake(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.adbCleanupPolicy")}
             tooltip={t("settings.adbCleanupPolicyTip")}
           >
@@ -602,8 +618,8 @@ export default function Settings() {
                 dispatch(setAdbCleanupPolicy(v as "auto" | "always" | "never"))
               }
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.screenOffTimeout")}
             tooltip={t("settings.screenOffTimeoutTip")}
           >
@@ -615,14 +631,14 @@ export default function Settings() {
               value={localConfig.screenOffTimeout}
               onChange={(v) => v !== null && dispatch(setScreenOffTimeout(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.powerOffOnClose")}>
+          </SettingBox>
+          <SettingBox label={t("settings.powerOffOnClose")}>
             <Switch
               checked={localConfig.powerOffOnClose}
               onChange={(v) => dispatch(setPowerOffOnClose(v))}
             />
-          </ItemBox>
-          <ItemBox
+          </SettingBox>
+          <SettingBox
             label={t("settings.webBindAddr")}
             tooltip={t("settings.webBindAddrTip")}
           >
@@ -632,29 +648,33 @@ export default function Settings() {
               value={localConfig.webBindAddr}
               onChange={(v) => dispatch(setWebBindAddr(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.webPort")}>
+          </SettingBox>
+          <SettingBox label={t("settings.webPort")}>
             <InputNumber
               className="w-sm"
               controls={false}
               value={localConfig.webPort}
               onChange={(v) => v !== null && dispatch(setWebPort(v))}
             />
-          </ItemBox>
-          <ItemBox label={t("settings.controllerPort")}>
+          </SettingBox>
+          <SettingBox label={t("settings.controllerPort")}>
             <InputNumber
               className="w-sm"
               controls={false}
               value={localConfig.controllerPort}
               onChange={(v) => v !== null && dispatch(setControllerPort(v))}
             />
-          </ItemBox>
-          <ItemBox>
+          </SettingBox>
+          <SettingBox>
             <Button type="primary" onClick={openDataPath}>
               {t("settings.openDataPath")}
             </Button>
-          </ItemBox>
-        </ItemBoxContainer>
+          </SettingBox>
+                </ItemBoxContainer>
+              ),
+            },
+          ]}
+        />
       </section>
       <section>
         <h2 className="title-with-line">{t("settings.about.title")}</h2>
