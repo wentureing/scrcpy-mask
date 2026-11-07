@@ -7,11 +7,22 @@ import { requestGet, requestPost } from "../../utils";
 import { useMessageContext } from "../../hooks";
 import { formatMappingLabel } from "../mappings/tools";
 
+type AccessTarget = {
+  kind: "mode" | "mapping";
+  mode?: string | null;
+  mapping_id?: string | null;
+};
+
 type AccessRule = {
   mapping_id: string;
   action?: string | null;
-  when: string;
-  allow: boolean;
+  predicate: "is" | "is_not";
+  condition: string;
+  operation: {
+    kind: "disable" | "enable" | "open" | "close";
+    target?: AccessTarget | null;
+  };
+  enabled: boolean;
 };
 
 type MappingOption = { value: string; label: string; type: string };
@@ -24,13 +35,10 @@ type AccessRulesEditorProps = {
 };
 
 /**
- * 访问规则编辑器（docs/29）。
+ * 访问规则编辑器（docs/29、docs/31）。
  *
- * - 不传 `mappingId`：全局模式，显示所有规则，可改映射；
- * - 传 `mappingId`：单映射模式，只显示该映射的规则，映射固定。
- *
- * 读写仍是 `LocalConfig.access_rules` + `/api/config/update_config`，
- * 保存走「请求成功才回填」。
+ * 规则 = 目标（映射 + 映射内操作）+ 条件（谓词 + 中性条件）+ 操作（禁用/启用/打开/关闭）。
+ * 每行最左有“启用/禁用”开关，关闭的规则不参与判定。
  */
 export default function AccessRulesEditor({
   mappingId,
@@ -47,7 +55,6 @@ export default function AccessRulesEditor({
     free_look_active: boolean;
   } | null>(null);
 
-  // 当前映射文件里的映射（真实 id + 可读标签 + 类型）
   useEffect(() => {
     const file = localConfig.activeMappingFile;
     if (!file) {
@@ -84,7 +91,6 @@ export default function AccessRulesEditor({
     };
   }, [localConfig.activeMappingFile]);
 
-  // 诊断：当前条件 + 自由视角是否激活
   useEffect(() => {
     let cancelled = false;
     requestGet<{ state: string; free_look_active: boolean }>(
@@ -101,27 +107,30 @@ export default function AccessRulesEditor({
     };
   }, []);
 
-  const accessStateOptions = [
-    {
-      value: "free_look_inactive",
-      label: t("settings.accessStateFreeLookInactive"),
-    },
-    {
-      value: "free_look_active",
-      label: t("settings.accessStateFreeLookActive"),
-    },
-    {
-      value: "free_look_enabled",
-      label: t("settings.accessStateFreeLookEnabledOn"),
-    },
-    {
-      value: "free_look_disabled",
-      label: t("settings.accessStateFreeLookEnabledOff"),
-    },
-    { value: "fps", label: t("settings.accessStateFps") },
-    { value: "normal", label: t("settings.accessStateNormal") },
-    { value: "observation", label: t("settings.accessStateObservation") },
-    { value: "raw_input", label: t("settings.accessStateRawInput") },
+  const conditionOptions = [
+    { value: "free_look_active", label: t("settings.accessConditionFreeLook") },
+    { value: "fps", label: t("settings.accessConditionFps") },
+    { value: "observation", label: t("settings.accessConditionObservation") },
+    { value: "raw_input", label: t("settings.accessConditionRawInput") },
+    { value: "normal", label: t("settings.accessConditionNormal") },
+  ];
+
+  const predicateOptions = [
+    { value: "is", label: t("settings.accessPredicateIs") },
+    { value: "is_not", label: t("settings.accessPredicateIsNot") },
+  ];
+
+  const operationOptions = [
+    { value: "disable", label: t("settings.accessOperationDisable") },
+    { value: "enable", label: t("settings.accessOperationEnable") },
+    { value: "open", label: t("settings.accessOperationOpen") },
+    { value: "close", label: t("settings.accessOperationClose") },
+  ];
+
+  const modeOptions = [
+    { value: "free_look", label: t("settings.accessModeFreeLook") },
+    { value: "fps", label: t("settings.accessModeFps") },
+    { value: "raw_input", label: t("settings.accessModeRawInput") },
   ];
 
   const accessActionOptions = (type: string) => {
@@ -130,20 +139,11 @@ export default function AccessRulesEditor({
       case "SingleTap":
         return [whole, { value: "tap", label: t("settings.accessActionTap") }];
       case "RepeatTap":
-        return [
-          whole,
-          { value: "repeat", label: t("settings.accessActionRepeat") },
-        ];
+        return [whole, { value: "repeat", label: t("settings.accessActionRepeat") }];
       case "MultipleTap":
-        return [
-          whole,
-          { value: "multiple", label: t("settings.accessActionMultiple") },
-        ];
+        return [whole, { value: "multiple", label: t("settings.accessActionMultiple") }];
       case "Swipe":
-        return [
-          whole,
-          { value: "swipe", label: t("settings.accessActionSwipe") },
-        ];
+        return [whole, { value: "swipe", label: t("settings.accessActionSwipe") }];
       case "DirectionPad":
         return [
           whole,
@@ -160,20 +160,11 @@ export default function AccessRulesEditor({
       case "PadCastSpell":
         return [whole, { value: "cast", label: t("settings.accessActionCast") }];
       case "CancelCast":
-        return [
-          whole,
-          { value: "cancel", label: t("settings.accessActionCancel") },
-        ];
+        return [whole, { value: "cancel", label: t("settings.accessActionCancel") }];
       case "Script":
-        return [
-          whole,
-          { value: "press", label: t("settings.accessActionPress") },
-        ];
+        return [whole, { value: "press", label: t("settings.accessActionPress") }];
       case "Fps":
-        return [
-          whole,
-          { value: "toggle", label: t("settings.accessActionToggle") },
-        ];
+        return [whole, { value: "toggle", label: t("settings.accessActionToggle") }];
       default:
         return [whole];
     }
@@ -198,8 +189,9 @@ export default function AccessRulesEditor({
   }
 
   function patchRule(rule: AccessRule, patch: Partial<AccessRule>) {
-    const next = allRules.map((item) => (item === rule ? { ...item, ...patch } : item));
-    saveAccessRules(next);
+    saveAccessRules(
+      allRules.map((item) => (item === rule ? { ...item, ...patch } : item)),
+    );
   }
 
   function removeRule(rule: AccessRule) {
@@ -207,14 +199,15 @@ export default function AccessRulesEditor({
   }
 
   function addRule() {
-    const targetId = mappingId ?? mappingOptions[0]?.value ?? "";
     saveAccessRules([
       ...allRules,
       {
-        mapping_id: targetId,
+        mapping_id: mappingId ?? mappingOptions[0]?.value ?? "",
         action: null,
-        when: "free_look_inactive",
-        allow: false,
+        predicate: "is",
+        condition: "free_look_active",
+        operation: { kind: "disable", target: null },
+        enabled: true,
       },
     ]);
   }
@@ -222,48 +215,149 @@ export default function AccessRulesEditor({
   const mappingType = (id: string) =>
     mappingOptions.find((item) => item.value === id)?.type ?? "";
 
+  const header = (
+    <Flex gap="small" className="w-full text-xs text-text-secondary">
+      <div style={{ width: "20%" }}>{t("settings.accessColumnMapping")}</div>
+      <div style={{ width: "30%" }}>{t("settings.accessColumnCondition")}</div>
+      <div style={{ width: "50%" }}>{t("settings.accessColumnOperation")}</div>
+    </Flex>
+  );
+
   const list = (
     <Flex vertical gap="small" className="w-full">
       <Typography.Text type="secondary" className="text-xs">
         {t("settings.accessCurrentState")}
         {": "}
         {accessState?.state ?? "-"}
-        {accessState?.free_look_active
-          ? t("settings.accessStateSuffixActive")
-          : ""}
       </Typography.Text>
-      {rules.map((rule) => (
-        <Flex key={`${rule.mapping_id}-${rule.action ?? ""}-${rule.when}`} gap="small" align="center" wrap>
-          <Select
-            className="w-sm"
-            value={rule.mapping_id}
-            disabled={!!mappingId}
-            options={mappingOptions}
-            onChange={(value) => patchRule(rule, { mapping_id: value })}
-          />
-          <Select
-            className="w-xs"
-            value={rule.action ?? ""}
-            options={accessActionOptions(mappingType(rule.mapping_id))}
-            onChange={(value) => patchRule(rule, { action: value || null })}
-          />
-          <Select
-            className="w-sm"
-            value={rule.when}
-            options={accessStateOptions}
-            onChange={(value) => patchRule(rule, { when: value })}
-          />
-          <Switch
-            checked={rule.allow}
-            checkedChildren={t("settings.accessAllow")}
-            unCheckedChildren={t("settings.accessDeny")}
-            onChange={(value) => patchRule(rule, { allow: value })}
-          />
-          <Button size="small" danger onClick={() => removeRule(rule)}>
-            {t("settings.accessRuleRemove")}
-          </Button>
-        </Flex>
-      ))}
+      {header}
+      {rules.map((rule) => {
+        const needsTarget =
+          rule.operation.kind === "open" || rule.operation.kind === "close";
+        return (
+          <Flex key={`${rule.mapping_id}-${rule.action ?? ""}-${rule.condition}`} gap="small" align="center" wrap>
+            <Flex gap="small" align="center" style={{ width: "20%" }}>
+              <Switch
+                size="small"
+                checked={rule.enabled}
+                onChange={(value) => patchRule(rule, { enabled: value })}
+              />
+              <Select
+                size="small"
+                className="flex-grow-1"
+                value={rule.mapping_id}
+                disabled={!!mappingId}
+                options={mappingOptions}
+                onChange={(value) => patchRule(rule, { mapping_id: value })}
+              />
+              <Select
+                size="small"
+                className="w-24"
+                value={rule.action ?? ""}
+                options={accessActionOptions(mappingType(rule.mapping_id))}
+                onChange={(value) => patchRule(rule, { action: value || null })}
+              />
+            </Flex>
+            <Flex gap="small" align="center" style={{ width: "30%" }}>
+              <Select
+                size="small"
+                className="w-20"
+                value={rule.predicate}
+                options={predicateOptions}
+                onChange={(value) =>
+                  patchRule(rule, { predicate: value as AccessRule["predicate"] })
+                }
+              />
+              <Select
+                size="small"
+                className="flex-grow-1"
+                value={rule.condition}
+                options={conditionOptions}
+                onChange={(value) => patchRule(rule, { condition: value })}
+              />
+            </Flex>
+            <Flex gap="small" align="center" style={{ width: "50%" }}>
+              <Select
+                size="small"
+                className="w-24"
+                value={rule.operation.kind}
+                options={operationOptions}
+                onChange={(value) =>
+                  patchRule(rule, {
+                    operation: {
+                      kind: value as AccessRule["operation"]["kind"],
+                      target: needsTarget ? rule.operation.target ?? null : null,
+                    } as AccessRule["operation"],
+                  })
+                }
+              />
+              {needsTarget && (
+                <>
+                  <Select
+                    size="small"
+                    className="w-20"
+                    value={rule.operation.target?.kind ?? "mode"}
+                    options={[
+                      { value: "mode", label: t("settings.accessTargetMode") },
+                      { value: "mapping", label: t("settings.accessTargetMapping") },
+                    ]}
+                    onChange={(value) =>
+                      patchRule(rule, {
+                        operation: {
+                          ...rule.operation,
+                          target: {
+                            kind: value as "mode" | "mapping",
+                            mode: value === "mode" ? "free_look" : null,
+                            mapping_id:
+                              value === "mapping"
+                                ? mappingOptions[0]?.value ?? null
+                                : null,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <Select
+                    size="small"
+                    className="flex-grow-1"
+                    value={
+                      rule.operation.target?.kind === "mode"
+                        ? rule.operation.target?.mode ?? "free_look"
+                        : rule.operation.target?.mapping_id ?? ""
+                    }
+                    options={
+                      rule.operation.target?.kind === "mode"
+                        ? modeOptions
+                        : mappingOptions
+                    }
+                    onChange={(value) =>
+                      patchRule(rule, {
+                        operation: {
+                          ...rule.operation,
+                          target: {
+                            kind: rule.operation.target?.kind ?? "mode",
+                            mode:
+                              rule.operation.target?.kind === "mode"
+                                ? value
+                                : null,
+                            mapping_id:
+                              rule.operation.target?.kind === "mapping"
+                                ? value
+                                : null,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </>
+              )}
+              <Button size="small" danger onClick={() => removeRule(rule)}>
+                {t("settings.accessRuleRemove")}
+              </Button>
+            </Flex>
+          </Flex>
+        );
+      })}
       <Button size="small" onClick={addRule}>
         {t("settings.accessRuleAdd")}
       </Button>

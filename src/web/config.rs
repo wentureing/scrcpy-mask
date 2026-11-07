@@ -903,33 +903,83 @@ async fn update_config(
                         "access_rules[].mapping_id 不能为空",
                     ));
                 }
-                let when = obj
-                    .get("when")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim();
-                if crate::access_rules::normalize_state(when).is_none() {
-                    return Err(WebServerError::bad_request(format!(
-                        "access_rules[].when 不支持状态 {}（可选：free_look_active / free_look_inactive / fps / normal / observation / raw_input）",
-                        when
-                    )));
-                }
-                let allow = obj
-                    .get("allow")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                // 可选：映射内操作（DirectionPad 的 up/down/left/right、Script 的 press 等）
                 let action = obj
                     .get("action")
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string);
+                let predicate = match obj
+                    .get("predicate")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("is")
+                {
+                    "is" => crate::access_rules::Predicate::Is,
+                    "is_not" => crate::access_rules::Predicate::IsNot,
+                    other => {
+                        return Err(WebServerError::bad_request(format!(
+                            "access_rules[].predicate 不支持 {}（可选：is / is_not）",
+                            other
+                        )))
+                    }
+                };
+                let condition = obj
+                    .get("condition")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if crate::access_rules::normalize_condition(condition).is_none() {
+                    return Err(WebServerError::bad_request(format!(
+                        "access_rules[].condition 不支持 {}（可选：free_look_active / fps / observation / raw_input / normal）",
+                        condition
+                    )));
+                }
+                let Some(operation) = obj.get("operation").and_then(|v| v.as_object()) else {
+                    return Err(WebServerError::bad_request(
+                        "access_rules[].operation 必须是对象",
+                    ));
+                };
+                let kind = match operation
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                {
+                    "disable" => crate::access_rules::OperationKind::Disable,
+                    "enable" => crate::access_rules::OperationKind::Enable,
+                    "open" => crate::access_rules::OperationKind::Open,
+                    "close" => crate::access_rules::OperationKind::Close,
+                    other => {
+                        return Err(WebServerError::bad_request(format!(
+                            "access_rules[].operation.kind 不支持 {}（可选：disable / enable / open / close）",
+                            other
+                        )))
+                    }
+                };
+                let target = operation.get("target").and_then(|v| v.as_object()).map(
+                    |target| crate::access_rules::OperationTarget {
+                        kind: target
+                            .get("kind")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("mapping")
+                            .to_string(),
+                        mode: target
+                            .get("mode")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
+                        mapping_id: target
+                            .get("mapping_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
+                    },
+                );
+                let enabled = obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
                 rules.push(crate::access_rules::AccessRule {
                     mapping_id: mapping_id.to_string(),
                     action,
-                    when: when.to_string(),
-                    allow,
+                    predicate,
+                    condition: condition.to_string(),
+                    operation: crate::access_rules::Operation { kind, target },
+                    enabled,
                 });
             }
             LocalConfig::set_access_rules(rules.clone());

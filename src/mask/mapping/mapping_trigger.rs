@@ -13,7 +13,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::{
-    access_rules::{AccessRule, CompiledAccessRules, STATE_FPS, STATE_FREE_LOOK_ACTIVE, STATE_NORMAL, STATE_OBSERVATION, STATE_RAW_INPUT},
+    access_rules::{AccessRule, CompiledAccessRules, CONDITION_FPS, CONDITION_FREE_LOOK_ACTIVE, CONDITION_NORMAL, CONDITION_OBSERVATION, CONDITION_RAW_INPUT},
     config::LocalConfig,
     mask::mapping::{
         MappingState,
@@ -32,10 +32,10 @@ static CURRENT_STATE: AtomicU8 = AtomicU8::new(4);
 
 fn state_index(state: &'static str) -> u8 {
     match state {
-        STATE_RAW_INPUT => 0,
-        STATE_FPS => 1,
-        STATE_OBSERVATION => 2,
-        STATE_FREE_LOOK_ACTIVE => 3,
+        CONDITION_RAW_INPUT => 0,
+        CONDITION_FPS => 1,
+        CONDITION_OBSERVATION => 2,
+        CONDITION_FREE_LOOK_ACTIVE => 3,
         _ => 4,
     }
 }
@@ -43,17 +43,17 @@ fn state_index(state: &'static str) -> u8 {
 /// 当前访问状态字符串（诊断用）。
 pub fn current_access_state() -> &'static str {
     match CURRENT_STATE.load(Ordering::Relaxed) {
-        0 => STATE_RAW_INPUT,
-        1 => STATE_FPS,
-        2 => STATE_OBSERVATION,
-        3 => STATE_FREE_LOOK_ACTIVE,
-        _ => STATE_NORMAL,
+        0 => CONDITION_RAW_INPUT,
+        1 => CONDITION_FPS,
+        2 => CONDITION_OBSERVATION,
+        3 => CONDITION_FREE_LOOK_ACTIVE,
+        _ => CONDITION_NORMAL,
     }
 }
 
 impl Default for AccessState {
     fn default() -> Self {
-        Self(STATE_NORMAL)
+        Self(CONDITION_NORMAL)
     }
 }
 
@@ -78,15 +78,15 @@ pub fn current_state(
     free_look_active: bool,
 ) -> &'static str {
     if raw_input {
-        STATE_RAW_INPUT
+        CONDITION_RAW_INPUT
     } else if fps {
-        STATE_FPS
+        CONDITION_FPS
     } else if observation_active {
-        STATE_OBSERVATION
+        CONDITION_OBSERVATION
     } else if free_look_active {
-        STATE_FREE_LOOK_ACTIVE
+        CONDITION_FREE_LOOK_ACTIVE
     } else {
-        STATE_NORMAL
+        CONDITION_NORMAL
     }
 }
 
@@ -123,38 +123,25 @@ pub fn allowed(
     mapping_id: &str,
     action: Option<&str>,
     state: &str,
-    free_look_active: bool,
-    free_look_enabled: bool,
 ) -> bool {
-    rules
-        .compiled
-        .allowed(mapping_id, action, state, free_look_active, free_look_enabled)
+    rules.compiled.allowed(mapping_id, action, state)
 }
 
-/// 把"当前状态 + 规则表 + 自由视角状态/开关"合成一个系统参数。
+/// 把"当前状态 + 规则表"合成一个系统参数。
 ///
-/// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；直接加多个参数会让
-/// `handle_pad_cast_spell` / `handle_direction_pad` 超限。合成一个后每处只多 1 个参数。
+/// 目的：`handle_*` 的参数个数受 Bevy 上限（16）约束；合成一个后每处只多 1 个参数。
 #[derive(SystemParam)]
 pub struct AccessContext<'w> {
     state: Res<'w, AccessState>,
     rules: Res<'w, AccessRulesResource>,
-    free_look: Res<'w, FreeLookState>,
 }
 
 impl AccessContext<'_> {
     /// 该映射（或其中某个操作）在当前条件下是否允许触发。
     ///
-    /// `action`：`None` = 整个映射；`Some("up")` 等 = 映射内操作（具体优先）。
+    /// `action`：`None` = 整个映射；`Some("up")` 等 = 映射内操作。
     pub fn allowed(&self, mapping_id: &str, action: Option<&str>) -> bool {
-        allowed(
-            &self.rules,
-            mapping_id,
-            action,
-            self.state.0,
-            self.free_look.is_active(),
-            crate::config::LocalConfig::free_look_enabled(),
-        )
+        allowed(&self.rules, mapping_id, action, self.state.0)
     }
 }
 
@@ -164,14 +151,14 @@ mod tests {
 
     #[test]
     fn state_priority_is_fixed() {
-        assert_eq!(current_state(true, true, true, true), STATE_RAW_INPUT);
-        assert_eq!(current_state(false, true, true, true), STATE_FPS);
-        assert_eq!(current_state(false, false, true, true), STATE_OBSERVATION);
+        assert_eq!(current_state(true, true, true, true), CONDITION_RAW_INPUT);
+        assert_eq!(current_state(false, true, true, true), CONDITION_FPS);
+        assert_eq!(current_state(false, false, true, true), CONDITION_OBSERVATION);
         assert_eq!(
             current_state(false, false, false, true),
-            STATE_FREE_LOOK_ACTIVE
+            CONDITION_FREE_LOOK_ACTIVE
         );
-        assert_eq!(current_state(false, false, false, false), STATE_NORMAL);
+        assert_eq!(current_state(false, false, false, false), CONDITION_NORMAL);
     }
 
     #[test]
@@ -179,29 +166,20 @@ mod tests {
         let rule = AccessRule {
             mapping_id: "Fire-0".to_string(),
             action: None,
-            when: STATE_FREE_LOOK_ACTIVE.to_string(),
-            allow: false,
+            predicate: crate::access_rules::Predicate::Is,
+            condition: CONDITION_FREE_LOOK_ACTIVE.to_string(),
+            operation: crate::access_rules::Operation {
+                kind: crate::access_rules::OperationKind::Disable,
+                target: None,
+            },
+            enabled: true,
         };
         let rules = AccessRulesResource {
             source: vec![rule.clone()],
             compiled: CompiledAccessRules::compile(&[rule]),
         };
-        assert!(!allowed(
-            &rules,
-            "Fire-0",
-            None,
-            STATE_FREE_LOOK_ACTIVE,
-            true,
-            true
-        ));
-        assert!(allowed(&rules, "Fire-0", None, STATE_NORMAL, false, true));
-        assert!(allowed(
-            &rules,
-            "Other",
-            None,
-            STATE_FREE_LOOK_ACTIVE,
-            true,
-            true
-        ));
+        assert!(!allowed(&rules, "Fire-0", None, CONDITION_FREE_LOOK_ACTIVE));
+        assert!(allowed(&rules, "Fire-0", None, CONDITION_NORMAL));
+        assert!(allowed(&rules, "Other", None, CONDITION_FREE_LOOK_ACTIVE));
     }
 }

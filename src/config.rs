@@ -76,7 +76,7 @@ mod uhid_config_tests {
         assert_eq!(value["free_look_exit_keys"], serde_json::json!(["KeyF"]));
         assert_eq!(value["free_look_enter_keys"], serde_json::json!([]));
         assert_eq!(value["virtual_cursor_visible"], serde_json::json!(false));
-        assert_eq!(value["config_version"], serde_json::json!(3));
+        assert_eq!(value["config_version"], serde_json::json!(4));
         assert!(value.get("free_look_exit_key").is_none());
     }
 
@@ -119,9 +119,10 @@ mod uhid_config_tests {
         let rules = value["access_rules"].as_array().unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0]["mapping_id"], "Fire-0");
-        assert_eq!(rules[0]["when"], "free_look_active");
-        assert_eq!(rules[0]["allow"], false);
-        assert_eq!(value["config_version"], serde_json::json!(3));
+        assert_eq!(rules[0]["predicate"], "is");
+        assert_eq!(rules[0]["condition"], "free_look_active");
+        assert_eq!(rules[0]["operation"]["kind"], "disable");
+        assert_eq!(value["config_version"], serde_json::json!(4));
     }
 
     #[test]
@@ -146,14 +147,24 @@ mod uhid_config_tests {
             AccessRule {
                 mapping_id: "a62a9ce3".to_string(),
                 action: None,
-                when: "free_look_inactive".to_string(),
-                allow: false,
+                predicate: crate::access_rules::Predicate::Is,
+                condition: "normal".to_string(),
+                operation: crate::access_rules::Operation {
+                    kind: crate::access_rules::OperationKind::Disable,
+                    target: None,
+                },
+                enabled: true,
             },
             AccessRule {
                 mapping_id: "9".to_string(),
                 action: None,
-                when: "normal".to_string(),
-                allow: false,
+                predicate: crate::access_rules::Predicate::Is,
+                condition: "normal".to_string(),
+                operation: crate::access_rules::Operation {
+                    kind: crate::access_rules::OperationKind::Disable,
+                    target: None,
+                },
+                enabled: true,
             },
         ];
         let valid: std::collections::HashSet<String> =
@@ -173,7 +184,7 @@ fn default_free_look_exit_key() -> String {
 }
 
 /// 当前配置版本。结构发生不兼容变化时 +1，并在 [`migrate_config`] 里加对应迁移器。
-pub const CURRENT_CONFIG_VERSION: u32 = 3;
+pub const CURRENT_CONFIG_VERSION: u32 = 4;
 
 fn default_config_version() -> u32 {
     CURRENT_CONFIG_VERSION
@@ -675,6 +686,10 @@ pub fn migrate_config(
         migrate_v2_to_v3(obj);
         migrated = true;
     }
+    if version < 4 {
+        migrate_v3_to_v4(obj);
+        migrated = true;
+    }
     if migrated {
         obj.insert(
             "config_version".to_string(),
@@ -700,6 +715,69 @@ fn migrate_v2_to_v3(obj: &mut serde_json::Map<String, serde_json::Value>) {
             }
         }
     }
+}
+
+/// v3 → v4：访问规则改为“谓词 + 条件 + 操作”结构（docs/31）。
+///
+/// 旧规则 `{mapping_id, action, when, allow}` →
+/// `{mapping_id, action, predicate, condition, operation, enabled}`。
+/// 旧的总开关条件（`free_look_enabled/disabled`）已移除，迁移时丢弃并告警。
+fn migrate_v3_to_v4(obj: &mut serde_json::Map<String, serde_json::Value>) {
+    let Some(rules) = obj
+        .get("access_rules")
+        .and_then(|value| value.as_array())
+        .cloned()
+    else {
+        return;
+    };
+    let mut next = Vec::new();
+    for rule in rules {
+        let Some(old) = rule.as_object() else {
+            continue;
+        };
+        let mapping_id = old
+            .get("mapping_id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let action = old
+            .get("action")
+            .cloned()
+            .filter(|value| !value.is_null());
+        let when = old.get("when").and_then(|value| value.as_str()).unwrap_or("normal");
+        let allow = old.get("allow").and_then(|value| value.as_bool()).unwrap_or(true);
+        let enabled = old
+            .get("enabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
+        let (predicate, condition) = match when {
+            "free_look_inactive" => ("is_not", "free_look_active"),
+            "free_look_active" => ("is", "free_look_active"),
+            "fps" => ("is", "fps"),
+            "observation" => ("is", "observation"),
+            "raw_input" => ("is", "raw_input"),
+            "normal" => ("is", "normal"),
+            "free_look_enabled" | "free_look_disabled" => {
+                log::warn!("迁移访问规则：丢弃已移除的总开关条件规则");
+                continue;
+            }
+            other => {
+                log::warn!("迁移访问规则：丢弃未知条件 `{}`", other);
+                continue;
+            }
+        };
+        next.push(serde_json::json!({
+            "mapping_id": mapping_id,
+            "action": action,
+            "predicate": predicate,
+            "condition": condition,
+            "operation": {
+                "kind": if allow { "enable" } else { "disable" },
+            },
+            "enabled": enabled,
+        }));
+    }
+    obj.insert("access_rules".to_string(), serde_json::Value::Array(next));
 }
 
 /// v0 → v2（一次到位）：
@@ -763,7 +841,7 @@ fn migrate_v0_to_v2(
         if binds.iter().any(|bind| blocked.iter().any(|key| key == bind)) {
             rules.push(serde_json::json!({
                 "mapping_id": mapping_id,
-                "when": crate::access_rules::STATE_FREE_LOOK_ACTIVE,
+                "when": "free_look_active",
                 "allow": false,
             }));
         }

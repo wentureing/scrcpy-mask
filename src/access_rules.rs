@@ -1,159 +1,183 @@
-//! 访问规则：在某个条件下，允许/不允许某个映射（或映射内的某个操作）触发（`docs/26`、`docs/29`）。
+//! 访问规则（docs/29、docs/31）：目标（映射 + 映射内操作）+ 条件（谓词 + 条件）+ 操作。
 //!
-//! 设计要点（用户定稿）：
-//! - 目标**只用映射 id**（可选 `action` 细化到映射内操作）；不做全局规则（同时只有一个映射文件生效）；
-//! - 条件是**单一字符串**（不是集合/bitmask）；条件组合接口预留但暂不实现；
-//! - **默认允许**：没有规则命中就放行，规则表是"例外表"；
-//! - 同一目标同一条件多条命中时**拒绝优先**；
-//! - 未知条件在编译时忽略并告警（向前兼容）。
+//! 语义（用户定稿）：
+//! - 条件 = **谓词（肯定/否定）+ 中性条件**；
+//! - 操作 = **禁用/启用**（状态型，过滤器）或 **打开/关闭**（一次型）；
+//! - **禁用优先**：状态型“禁用”压过一次型动作；
+//! - 每条规则最左有独立开关（`enabled`），关闭的规则不参与判定；
+//! - 默认可用：没有规则命中就放行；
+//! - 条件/操作的冲突由用户负责（保存时警告，属未定义行为）。
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-/// 运行状态：鼠标直控模式。
-pub const STATE_RAW_INPUT: &str = "raw_input";
-/// 运行状态：FPS 视角。
-pub const STATE_FPS: &str = "fps";
-/// 运行状态：按住观察。
-pub const STATE_OBSERVATION: &str = "observation";
-/// 运行状态：自由视角已激活。
-pub const STATE_FREE_LOOK_ACTIVE: &str = "free_look_active";
-/// 运行状态：自由视角未激活（与 `normal` 解耦）。
-pub const STATE_FREE_LOOK_INACTIVE: &str = "free_look_inactive";
-/// 其它情况（兜底）。
-pub const STATE_NORMAL: &str = "normal";
-/// 配置开关：自由视角总开关为开。
-pub const STATE_FREE_LOOK_ENABLED_ON: &str = "free_look_enabled";
-/// 配置开关：自由视角总开关为关。
-pub const STATE_FREE_LOOK_ENABLED_OFF: &str = "free_look_disabled";
+/// 运行条件：自由视角处于激活。
+pub const CONDITION_FREE_LOOK_ACTIVE: &str = "free_look_active";
+/// 运行条件：处于 FPS 视角。
+pub const CONDITION_FPS: &str = "fps";
+/// 运行条件：观察键被按住。
+pub const CONDITION_OBSERVATION: &str = "observation";
+/// 运行条件：处于鼠标直控。
+pub const CONDITION_RAW_INPUT: &str = "raw_input";
+/// 运行条件：其它情况（兜底）。
+pub const CONDITION_NORMAL: &str = "normal";
 
-fn default_true() -> bool {
+/// 谓词：肯定 / 否定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Predicate {
+    Is,
+    IsNot,
+}
+
+fn default_predicate() -> Predicate {
+    Predicate::Is
+}
+
+fn default_enabled() -> bool {
     true
+}
+
+/// 操作类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    /// 状态型：禁用（过滤器，优先于一次型）。
+    Disable,
+    /// 状态型：启用。
+    Enable,
+    /// 一次型：打开（设为可用）。
+    Open,
+    /// 一次型：关闭（设为不可用）。
+    Close,
+}
+
+/// 打开/关闭的目标：有模式的对象或指定映射。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationTarget {
+    /// `mode` = 有模式的对象（如自由视角）；`mapping` = 指定映射。
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mapping_id: Option<String>,
+}
+
+/// 操作：类型 + 可选目标（打开/关闭需要目标；禁用/启用作用于自身）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Operation {
+    pub kind: OperationKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<OperationTarget>,
 }
 
 /// 一条访问规则。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessRule {
-    /// 目标映射的 id（映射文件里的 `id`）。
+    /// 规则目标映射（禁用/启用对象；也是打开/关闭的默认目标）。
     pub mapping_id: String,
-    /// 可选：映射内的操作（如 DirectionPad 的 `up`、Script 的 `press`）；
-    /// `None` 表示整个映射。
+    /// 映射内操作（如 DirectionPad 的 `up`）；`None` = 整个映射。
     #[serde(default)]
     pub action: Option<String>,
-    /// 单一条件字符串，见本模块常量。
-    pub when: String,
-    /// `true` 允许，`false` 不允许；缺省为允许。
-    #[serde(default = "default_true")]
-    pub allow: bool,
+    /// 谓词：肯定 / 否定。
+    #[serde(default = "default_predicate")]
+    pub predicate: Predicate,
+    /// 条件（中性）。
+    pub condition: String,
+    /// 操作。
+    pub operation: Operation,
+    /// 规则自身是否生效（最左开关）。
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
 }
 
-/// 规则目标：映射 id + 可选操作。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct TargetKey {
-    mapping_id: String,
-    action: Option<String>,
-}
-
-/// 把配置里的条件字符串归一化。
-pub fn normalize_state(state: &str) -> Option<&'static str> {
-    match state {
-        STATE_RAW_INPUT => Some(STATE_RAW_INPUT),
-        STATE_FPS => Some(STATE_FPS),
-        STATE_OBSERVATION => Some(STATE_OBSERVATION),
-        STATE_FREE_LOOK_ACTIVE => Some(STATE_FREE_LOOK_ACTIVE),
-        STATE_FREE_LOOK_INACTIVE => Some(STATE_FREE_LOOK_INACTIVE),
-        STATE_NORMAL => Some(STATE_NORMAL),
-        STATE_FREE_LOOK_ENABLED_ON => Some(STATE_FREE_LOOK_ENABLED_ON),
-        STATE_FREE_LOOK_ENABLED_OFF => Some(STATE_FREE_LOOK_ENABLED_OFF),
+/// 把条件字符串归一化。
+pub fn normalize_condition(condition: &str) -> Option<&'static str> {
+    match condition {
+        CONDITION_FREE_LOOK_ACTIVE => Some(CONDITION_FREE_LOOK_ACTIVE),
+        CONDITION_FPS => Some(CONDITION_FPS),
+        CONDITION_OBSERVATION => Some(CONDITION_OBSERVATION),
+        CONDITION_RAW_INPUT => Some(CONDITION_RAW_INPUT),
+        CONDITION_NORMAL => Some(CONDITION_NORMAL),
         _ => None,
     }
 }
 
-/// 预编译后的规则表：`(mapping_id, action) -> state -> allow`。
+/// 谓词是否满足当前状态。
+pub fn predicate_matches(predicate: Predicate, condition: &str, state: &str) -> bool {
+    let met = condition == state;
+    match predicate {
+        Predicate::Is => met,
+        Predicate::IsNot => !met,
+    }
+}
+
+/// 编译后的规则：只保留可解析的条件。
 #[derive(Debug, Default)]
 pub struct CompiledAccessRules {
-    rules: HashMap<TargetKey, HashMap<&'static str, bool>>,
+    rules: Vec<AccessRule>,
 }
 
 impl CompiledAccessRules {
-    /// 编译规则：忽略未知条件；同一目标同一条件多条命中时拒绝优先。
     pub fn compile(rules: &[AccessRule]) -> Self {
-        let mut out: HashMap<TargetKey, HashMap<&'static str, bool>> = HashMap::new();
+        let mut kept = Vec::new();
         for rule in rules {
-            let Some(state) = normalize_state(&rule.when) else {
+            if normalize_condition(&rule.condition).is_none() {
                 log::warn!(
-                    "忽略未知的访问规则条件 `{}`（映射 {}），可选值见 docs/29",
-                    rule.when,
+                    "忽略未知的访问规则条件 `{}`（映射 {}），可选值见 docs/31",
+                    rule.condition,
                     rule.mapping_id
                 );
                 continue;
-            };
-            let key = TargetKey {
-                mapping_id: rule.mapping_id.clone(),
-                action: rule.action.clone().filter(|action| !action.is_empty()),
-            };
-            let entry = out.entry(key).or_default();
-            let slot = entry.entry(state).or_insert(true);
-            // 与运算即"拒绝优先"：任一 allow=false 就保持 false。
-            *slot = *slot && rule.allow;
+            }
+            kept.push(rule.clone());
         }
-        Self { rules: out }
-    }
-
-    /// 判定某映射（或其中某个操作）在当前条件下是否允许触发。默认允许。
-    ///
-    /// - `action`：`None` 表示整个映射；`Some("up")` 等表示映射内操作，具体优先于整映射；
-    /// - `free_look_active` / `free_look_enabled`：分别对应运行时激活与配置总开关。
-    pub fn allowed(
-        &self,
-        mapping_id: &str,
-        action: Option<&str>,
-        state: &str,
-        free_look_active: bool,
-        free_look_enabled: bool,
-    ) -> bool {
-        let Some(state) = normalize_state(state) else {
-            // 调用方传入未知条件时按"默认允许"处理，不 panic。
-            return true;
-        };
-        let mut allow = self.lookup(mapping_id, action, state);
-        if !free_look_active {
-            allow = allow && self.lookup(mapping_id, action, STATE_FREE_LOOK_INACTIVE);
-        }
-        let switch_state = if free_look_enabled {
-            STATE_FREE_LOOK_ENABLED_ON
-        } else {
-            STATE_FREE_LOOK_ENABLED_OFF
-        };
-        allow && self.lookup(mapping_id, action, switch_state)
-    }
-
-    /// 具体优先：先查 `(mapping, action)`，没有再查 `(mapping, None)`。
-    fn lookup(&self, mapping_id: &str, action: Option<&str>, state: &'static str) -> bool {
-        if let Some(value) = self.rule(mapping_id, action, state) {
-            return value;
-        }
-        self.rule(mapping_id, None, state).unwrap_or(true)
-    }
-
-    fn rule(
-        &self,
-        mapping_id: &str,
-        action: Option<&str>,
-        state: &'static str,
-    ) -> Option<bool> {
-        let key = TargetKey {
-            mapping_id: mapping_id.to_string(),
-            action: action.map(str::to_string),
-        };
-        self.rules
-            .get(&key)
-            .and_then(|states| states.get(state))
-            .copied()
+        Self { rules: kept }
     }
 
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
+    }
+
+    /// 判定某映射（或映射内操作）在当前条件下是否允许。
+    ///
+    /// 语义：禁用优先。返回 `false` 表示被过滤器拦截。
+    pub fn allowed(&self, mapping_id: &str, action: Option<&str>, state: &str) -> bool {
+        let mut disabled = false;
+        let mut enabled = false;
+        let mut closed = false;
+        let mut opened = false;
+
+        for rule in &self.rules {
+            if !rule.enabled {
+                continue;
+            }
+            if !predicate_matches(rule.predicate, &rule.condition, state) {
+                continue;
+            }
+            let hits_self = rule.mapping_id == mapping_id
+                && (rule.action.is_none() || rule.action.as_deref() == action);
+            if !hits_self {
+                continue;
+            }
+            match rule.operation.kind {
+                OperationKind::Disable => disabled = true,
+                OperationKind::Enable => enabled = true,
+                OperationKind::Close => closed = true,
+                OperationKind::Open => opened = true,
+            }
+        }
+
+        // 禁用优先：状态型禁用压过启用的动作；其余按“启用/打开 > 关闭”保守处理。
+        if disabled {
+            return false;
+        }
+        if enabled || opened {
+            return true;
+        }
+        if closed {
+            return false;
+        }
+        true
     }
 }
 
@@ -161,96 +185,102 @@ impl CompiledAccessRules {
 mod tests {
     use super::*;
 
-    fn rule(mapping_id: &str, when: &str, allow: bool) -> AccessRule {
+    fn rule(
+        mapping_id: &str,
+        predicate: Predicate,
+        condition: &str,
+        kind: OperationKind,
+    ) -> AccessRule {
         AccessRule {
             mapping_id: mapping_id.to_string(),
             action: None,
-            when: when.to_string(),
-            allow,
-        }
-    }
-
-    fn rule_action(mapping_id: &str, action: &str, when: &str, allow: bool) -> AccessRule {
-        AccessRule {
-            mapping_id: mapping_id.to_string(),
-            action: Some(action.to_string()),
-            when: when.to_string(),
-            allow,
+            predicate,
+            condition: condition.to_string(),
+            operation: Operation {
+                kind,
+                target: None,
+            },
+            enabled: true,
         }
     }
 
     #[test]
-    fn empty_rules_allow_everything() {
+    fn empty_rules_allow() {
         let rules = CompiledAccessRules::compile(&[]);
         assert!(rules.is_empty());
-        assert!(rules.allowed("Fire-0", None, STATE_FREE_LOOK_ACTIVE, true, true));
-        assert!(rules.allowed("Fire-0", None, STATE_NORMAL, false, true));
+        assert!(rules.allowed("a62a9ce3", None, CONDITION_NORMAL));
     }
 
     #[test]
-    fn deny_rule_blocks_only_its_mapping_and_state() {
+    fn disable_filters_when_condition_matches() {
         let rules = CompiledAccessRules::compile(&[rule(
-            "Fire-0",
-            STATE_FREE_LOOK_ACTIVE,
-            false,
+            "a62a9ce3",
+            Predicate::IsNot,
+            CONDITION_FREE_LOOK_ACTIVE,
+            OperationKind::Disable,
         )]);
-        assert!(!rules.allowed("Fire-0", None, STATE_FREE_LOOK_ACTIVE, true, true));
-        assert!(rules.allowed("Fire-0", None, STATE_NORMAL, false, true));
-        assert!(rules.allowed("Fire-1", None, STATE_FREE_LOOK_ACTIVE, true, true));
+        // 自由视角未激活（normal）→ 否定谓词成立 → 禁用
+        assert!(!rules.allowed("a62a9ce3", None, CONDITION_NORMAL));
+        // 自由视角激活 → 否定不成立 → 不禁用
+        assert!(rules.allowed("a62a9ce3", None, CONDITION_FREE_LOOK_ACTIVE));
     }
 
     #[test]
-    fn action_rule_takes_precedence_over_mapping_rule() {
+    fn disable_wins_over_open() {
         let rules = CompiledAccessRules::compile(&[
-            rule("Pad-0", STATE_FREE_LOOK_INACTIVE, false),
-            rule_action("Pad-0", "up", STATE_FREE_LOOK_INACTIVE, true),
+            rule(
+                "a62a9ce3",
+                Predicate::Is,
+                CONDITION_NORMAL,
+                OperationKind::Disable,
+            ),
+            rule(
+                "a62a9ce3",
+                Predicate::Is,
+                CONDITION_NORMAL,
+                OperationKind::Open,
+            ),
         ]);
-        // 整映射被禁用，但 up 操作被显式允许
-        assert!(!rules.allowed("Pad-0", None, STATE_NORMAL, false, true));
-        assert!(rules.allowed("Pad-0", Some("up"), STATE_NORMAL, false, true));
-        // 未显式允许的 down 仍走整映射规则
-        assert!(!rules.allowed("Pad-0", Some("down"), STATE_NORMAL, false, true));
+        assert!(!rules.allowed("a62a9ce3", None, CONDITION_NORMAL));
     }
 
     #[test]
-    fn free_look_inactive_is_independent_of_normal() {
+    fn disabled_rule_is_skipped() {
+        let mut r = rule(
+            "a62a9ce3",
+            Predicate::Is,
+            CONDITION_NORMAL,
+            OperationKind::Disable,
+        );
+        r.enabled = false;
+        let rules = CompiledAccessRules::compile(&[r]);
+        assert!(rules.allowed("a62a9ce3", None, CONDITION_NORMAL));
+    }
+
+    #[test]
+    fn action_specific_rule_matches() {
+        let mut r = rule(
+            "ea1af84d",
+            Predicate::Is,
+            CONDITION_NORMAL,
+            OperationKind::Disable,
+        );
+        r.action = Some("up".to_string());
+        let rules = CompiledAccessRules::compile(&[r]);
+        assert!(!rules.allowed("ea1af84d", Some("up"), CONDITION_NORMAL));
+        assert!(rules.allowed("ea1af84d", Some("down"), CONDITION_NORMAL));
+        assert!(rules.allowed("ea1af84d", None, CONDITION_NORMAL));
+    }
+
+    #[test]
+    fn unknown_condition_is_ignored() {
         let rules = CompiledAccessRules::compile(&[rule(
-            "Fire-0",
-            STATE_FREE_LOOK_INACTIVE,
-            false,
+            "a62a9ce3",
+            Predicate::Is,
+            "some_future_condition",
+            OperationKind::Disable,
         )]);
-        assert!(!rules.allowed("Fire-0", None, STATE_NORMAL, false, true));
-        assert!(!rules.allowed("Fire-0", None, STATE_FPS, false, true));
-        assert!(rules.allowed("Fire-0", None, STATE_FREE_LOOK_ACTIVE, true, true));
-
-        let normal_only = CompiledAccessRules::compile(&[rule("Fire-0", STATE_NORMAL, false)]);
-        assert!(!normal_only.allowed("Fire-0", None, STATE_NORMAL, false, true));
-        assert!(normal_only.allowed("Fire-0", None, STATE_FPS, false, true));
-    }
-
-    #[test]
-    fn free_look_enabled_condition_uses_config_switch() {
-        let rules = CompiledAccessRules::compile(&[rule(
-            "Fire-0",
-            STATE_FREE_LOOK_ENABLED_OFF,
-            false,
-        )]);
-        // 总开关关 → 命中
-        assert!(!rules.allowed("Fire-0", None, STATE_NORMAL, false, false));
-        // 总开关开 → 不命中
-        assert!(rules.allowed("Fire-0", None, STATE_NORMAL, false, true));
-    }
-
-    #[test]
-    fn unknown_state_is_ignored_and_allows() {
-        let rules = CompiledAccessRules::compile(&[rule("Fire-0", "some_future_state", false)]);
         assert!(rules.is_empty());
-        assert!(rules.allowed("Fire-0", None, STATE_NORMAL, false, true));
-    }
-
-    #[test]
-    fn allowed_defaults_to_true_for_unknown_mapping() {
-        let rules = CompiledAccessRules::compile(&[rule("Fire-0", STATE_NORMAL, false)]);
-        assert!(rules.allowed("Unknown-1", None, STATE_NORMAL, false, true));
+        assert!(rules.allowed("a62a9ce3", None, CONDITION_NORMAL));
     }
 }

@@ -77,12 +77,21 @@ export interface LocalConfigState {
   freeLookBlockedMouseButtons: string[];
   /** 虚拟光标：默认不显示；启用后在自由视角激活时显示。 */
   virtualCursorVisible: boolean;
-  /** 访问规则（docs/29）：映射 id + 可选操作 + 单一条件 + 允许/不允许；默认空表。 */
+  /** 访问规则（docs/31）：目标 + 谓词/条件 + 操作 + 规则开关；默认空表。 */
   accessRules: {
     mapping_id: string;
     action?: string | null;
-    when: string;
-    allow: boolean;
+    predicate: "is" | "is_not";
+    condition: string;
+    operation: {
+      kind: "disable" | "enable" | "open" | "close";
+      target?: {
+        kind: "mode" | "mapping";
+        mode?: string | null;
+        mapping_id?: string | null;
+      } | null;
+    };
+    enabled: boolean;
   }[];
   // language
   language: string;
