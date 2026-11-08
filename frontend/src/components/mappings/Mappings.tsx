@@ -904,12 +904,16 @@ export default function Mappings() {
   const localConfig = useAppSelector((state) => state.localConfig);
 
   const [displayedMappingFile, setDisplayedMappingFile] = useState("");
-  // 访问规则草稿基线：规则编辑只改本地 store，保存时与基线比较决定按钮是否可用
-  const savedAccessRulesRef = useRef<string>(
+  // 访问规则草稿基线：与映射的 editState 一样用 state，保存成功后更新才会触发重渲染
+  const [savedAccessRules, setSavedAccessRules] = useState<string>(
     JSON.stringify(localConfig.accessRules ?? []),
   );
+  // 切换映射文件 / 配置异步加载完成后，以当前规则为基线（避免“未修改却亮起”）
+  useEffect(() => {
+    setSavedAccessRules(JSON.stringify(localConfig.accessRules ?? []));
+  }, [localConfig.activeMappingFile]);
   const accessRulesDirty =
-    JSON.stringify(localConfig.accessRules ?? []) !== savedAccessRulesRef.current;
+    JSON.stringify(localConfig.accessRules ?? []) !== savedAccessRules;
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
@@ -1012,16 +1016,16 @@ export default function Mappings() {
   }
 
   async function updateMappingFile() {
-    // 只改了访问规则（映射未编辑）时，也允许用“保存”落盘
-    if (!editState) {
+    // 映射未编辑（或无映射）时：只处理访问规则的保存
+    if (!editState || !editState.edited) {
       if (accessRulesDirty) {
         try {
           await requestPost("/api/config/update_config", {
             key: "access_rules",
             value: localConfig.accessRules ?? [],
           });
-          savedAccessRulesRef.current = JSON.stringify(
-            localConfig.accessRules ?? [],
+          setSavedAccessRules(
+            JSON.stringify(localConfig.accessRules ?? []),
           );
           messageApi?.success(t("mappings.home.save"));
         } catch (error) {
@@ -1098,9 +1102,7 @@ export default function Mappings() {
               key: "access_rules",
               value: localConfig.accessRules ?? [],
             });
-            savedAccessRulesRef.current = JSON.stringify(
-              localConfig.accessRules ?? [],
-            );
+            setSavedAccessRules(JSON.stringify(localConfig.accessRules ?? []));
           } catch (accessRuleError) {
             messageApi?.error(String(accessRuleError));
           }
