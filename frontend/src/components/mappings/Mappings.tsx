@@ -632,6 +632,9 @@ function Displayer({
   const maskArea = useAppSelector((state) => state.other.maskArea);
   const { t } = useTranslation();
 
+  // 自由视角设置弹窗（菜单入口与入口圈共用）
+  const [freeLookOpen, setFreeLookOpen] = useState(false);
+
   const cursorPosRef = useRef<HTMLDivElement>(null);
   const displayerRef = useRef<HTMLDivElement>(null);
   const contextMenuPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -924,6 +927,10 @@ export default function Mappings() {
   const accessRulesDirty =
     JSON.stringify(localConfig.accessRules ?? []) !== savedAccessRules;
 
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
+  const [editState, setEditState] = useState<EditState | null>(null);
+
   // 有未保存内容（映射编辑 / 访问规则草稿）时阻止刷新，交浏览器弹原生提示
   useEffect(() => {
     if (!editState?.edited && !accessRulesDirty) return;
@@ -934,10 +941,6 @@ export default function Mappings() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [editState?.edited, accessRulesDirty]);
-  const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
-  const [freeLookOpen, setFreeLookOpen] = useState(false);
-  const [editState, setEditState] = useState<EditState | null>(null);
   const [mappingList, setMappingList] = useState<MappingFileInfo[]>([]);
   const [showAllMappingGuides, setShowAllMappingGuides] = useState(false);
   const [validationDiagnostics, setValidationDiagnostics] = useState<
