@@ -34,6 +34,9 @@ env:
 jobs:
   # 节流闸门：当前 run（含自己）已超过 3 个在跑/排队时，本次直接跳过，避免堆积。
   gate:
+    # 只有明确标记的提交才进入 CI：[test] 跑检查+测试，[package] 出包；
+    # 无标记提交不消耗 runner（全部 skipped）；[skip ci] 则整个 workflow 不启动。
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[test]') || startsWith(github.event.head_commit.message, '[package]') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
@@ -61,7 +64,7 @@ jobs:
   check:
     needs: gate
     # 普通 push 跑检查；带 [package] 的发包提交跳过检查（发包只做构建与打包）。
-    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[package]')) }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[test]'))) }}
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
@@ -174,7 +177,7 @@ jobs:
   test:
     needs: gate
     # 普通 push 跑测试；带 [package] 的发包提交跳过测试（发包只构建与打包）。
-    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[package]')) }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[test]'))) }}
     runs-on: windows-2022
     timeout-minutes: 90
     steps:

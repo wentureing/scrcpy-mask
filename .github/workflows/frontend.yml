@@ -5,13 +5,19 @@
 
 name: Frontend
 
-# 只在手动触发时构建前端，避免与 CI（check/test）在同一提交上重复运行。
-# 需要前端产物时：Actions → Frontend → Run workflow。
+# 只有明确标记 [frontend] 的提交才构建前端；也可手动 workflow_dispatch。
+# 这样普通提交不会同时触发 CI 与 Frontend。
 on:
+  push:
+    branches:
+      - master
+      - 'custom/**'
   workflow_dispatch:
 
 jobs:
   build:
+    # 无 [frontend] 标记的 push 直接跳过（不占 runner）
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[frontend]') }}
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
