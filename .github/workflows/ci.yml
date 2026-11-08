@@ -61,7 +61,7 @@ jobs:
   check:
     needs: gate
     # 普通 push 跑检查；带 [package] 的发包提交跳过检查（发包只做构建与打包）。
-    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[package]')) }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[package]')) }}
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
@@ -174,7 +174,7 @@ jobs:
   test:
     needs: gate
     # 普通 push 跑测试；带 [package] 的发包提交跳过测试（发包只构建与打包）。
-    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[package]')) }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[package]')) }}
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -237,7 +237,7 @@ jobs:
   package:
     # 发包只需要并发保护（gate）；不等 check（检查由普通 run 负责）与 test。
     needs: [gate]
-    if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))) }}
+    if: ${{ needs.gate.outputs.proceed == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.package) || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[package]'))) }}
     runs-on: windows-2022
     timeout-minutes: 240
     steps:
