@@ -205,6 +205,10 @@ export default function AccessRulesEditor({
   const mappingType = (id: string) =>
     mappingOptions.find((item) => item.value === id)?.type ?? "";
 
+  // 只有多动作映射才显示“动作”下拉；单动作映射固定“整个映射”，避免“整个映射/点击”的歧义
+  const hasMultipleActions = (type: string) =>
+    type === "DirectionPad" || type === "Script";
+
   const header = (
     <Flex gap="small" className="w-full text-xs text-text-secondary">
       <div style={{ width: "25%" }}>{t("settings.accessColumnMapping")}</div>
@@ -240,13 +244,15 @@ export default function AccessRulesEditor({
                 options={mappingOptions}
                 onChange={(value) => patchRule(rule, { mapping_id: value })}
               />
-              <Select
-                size="small"
-                style={{ width: 100 }}
-                value={rule.action ?? ""}
-                options={accessActionOptions(mappingType(rule.mapping_id))}
-                onChange={(value) => patchRule(rule, { action: value || null })}
-              />
+              {hasMultipleActions(mappingType(rule.mapping_id)) && (
+                <Select
+                  size="small"
+                  style={{ width: 100 }}
+                  value={rule.action ?? ""}
+                  options={accessActionOptions(mappingType(rule.mapping_id))}
+                  onChange={(value) => patchRule(rule, { action: value || null })}
+                />
+              )}
             </Flex>
             <Flex gap="small" align="center" style={{ width: "30%" }}>
               <Select
