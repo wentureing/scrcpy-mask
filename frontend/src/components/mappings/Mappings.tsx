@@ -713,9 +713,13 @@ function Displayer({
     };
   }, [state.current.original_size.width, state.current.original_size.height]);
 
-  // 菜单项只在语言变化时重建，避免每次渲染都重建 13 个菜单对象
+  // 菜单项只在语言变化时重建；末尾固定一个“自由视角”设置入口（防止入口圈被删后无法恢复）
   const newMappingMenuItems = useMemo(
-    () => menuItems.map(([key, tID]) => ({ key, label: t(tID) })),
+    () => [
+      ...menuItems.map(([key, tID]) => ({ key, label: t(tID) })),
+      { type: "divider" as const },
+      { key: "FreeLookSetting", label: t("settings.freeLookEnabled") },
+    ],
     [t],
   );
 
@@ -824,6 +828,11 @@ function Displayer({
           menu={{
             items: newMappingMenuItems,
             onClick({ key }) {
+              // 固定入口：打开自由视角设置，不创建映射
+              if (key === "FreeLookSetting") {
+                setFreeLookOpen(true);
+                return;
+              }
               let config: MappingType;
               if (key === "MouseCastSpell") {
                 config = mappingConstructorMap.MouseCastSpell(
@@ -886,7 +895,7 @@ function Displayer({
             return <div key={index}></div>;
           })}
           {/* 用例 13：无点击转视角的入口圈固定在左半屏中间，方便点进编辑 */}
-          <FreeLookEntry />
+          <FreeLookEntry open={freeLookOpen} onClose={() => setFreeLookOpen(false)} />
         </MappingOverlayProvider>
       </div>
     </div>
@@ -914,8 +923,20 @@ export default function Mappings() {
   }, [localConfig.activeMappingFile]);
   const accessRulesDirty =
     JSON.stringify(localConfig.accessRules ?? []) !== savedAccessRules;
+
+  // 有未保存内容（映射编辑 / 访问规则草稿）时阻止刷新，交浏览器弹原生提示
+  useEffect(() => {
+    if (!editState?.edited && !accessRulesDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editState?.edited, accessRulesDirty]);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
+  const [freeLookOpen, setFreeLookOpen] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [mappingList, setMappingList] = useState<MappingFileInfo[]>([]);
   const [showAllMappingGuides, setShowAllMappingGuides] = useState(false);

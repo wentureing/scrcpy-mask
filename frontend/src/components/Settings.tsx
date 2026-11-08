@@ -26,10 +26,6 @@ import {
   sethorizontalMaskWidth,
   setHorizontalPosition,
   setMappingLabelOpacity,
-  setFreeLookEnabled,
-  setFreeLookSensitivity,
-  setFreeLookInvertX,
-  setFreeLookInvertY,
   setClipboardSync,
   setLanguage,
   setVideoCodec,
@@ -108,31 +104,6 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
-  // free look 退出/恢复键候选（后端 parse_key 只识别这些名称，见 free_look.rs）
-  const freeLookExitKeyOptions = [
-    { value: "ControlLeft", label: t("settings.freeLookExitCtrlLeft") },
-    { value: "ControlRight", label: t("settings.freeLookExitCtrlRight") },
-    { value: "ShiftLeft", label: t("settings.freeLookExitShiftLeft") },
-    { value: "AltLeft", label: t("settings.freeLookExitAltLeft") },
-    { value: "Space", label: t("settings.freeLookExitSpace") },
-    { value: "Tab", label: t("settings.freeLookExitTab") },
-    { value: "Escape", label: t("settings.freeLookExitEscape") },
-    { value: "KeyC", label: "C" },
-    { value: "KeyF", label: "F" },
-    { value: "KeyG", label: "G" },
-    { value: "KeyV", label: "V" },
-    { value: "Backquote", label: "`" },
-  ];
-
-  // 自由视角激活期间可屏蔽的鼠标键（默认空 = 不屏蔽任何键）
-  const freeLookMouseButtonOptions = [
-    { value: "M-Left", label: t("settings.mouseLeft") },
-    { value: "M-Right", label: t("settings.mouseRight") },
-    { value: "M-Middle", label: t("settings.mouseMiddle") },
-    { value: "M-Back", label: t("settings.mouseBack") },
-    { value: "M-Forward", label: t("settings.mouseForward") },
-  ];
-
   // 端口被占用时后端会静默顺延到下一个端口，这里把那条提示显示出来（读后即清空）。
   useEffect(() => {
     let cancelled = false;
@@ -166,53 +137,6 @@ export default function Settings() {
       messageApi?.error(String(err));
     } finally {
       setTouchSaving(false);
-    }
-  }
-
-  // 退出键冲突时后端会拒绝保存（D10），所以这里不走乐观更新：
-  // 先请求，成功后再回填 store，失败则保留旧值并提示。
-  async function changeFreeLookKeys(
-    key: "free_look_exit_keys" | "free_look_enter_keys",
-    value: string[],
-  ) {
-    try {
-      const res = await requestPost("/api/config/update_config", { key, value });
-      const patch =
-        key === "free_look_exit_keys"
-          ? { free_look_exit_keys: value }
-          : { free_look_enter_keys: value };
-      dispatch(forceSetLocalConfig(patch));
-      messageApi?.success(res.message);
-    } catch (err: unknown) {
-      messageApi?.error(String(err));
-    }
-  }
-
-  async function changeFreeLookBlockedButtons(value: string[]) {
-    try {
-      const res = await requestPost("/api/config/update_config", {
-        key: "free_look_blocked_mouse_buttons",
-        value,
-      });
-      dispatch(
-        forceSetLocalConfig({ free_look_blocked_mouse_buttons: value }),
-      );
-      messageApi?.success(res.message);
-    } catch (err: unknown) {
-      messageApi?.error(String(err));
-    }
-  }
-
-  async function changeVirtualCursorVisible(value: boolean) {
-    try {
-      const res = await requestPost("/api/config/update_config", {
-        key: "virtual_cursor_visible",
-        value,
-      });
-      dispatch(forceSetLocalConfig({ virtual_cursor_visible: value }));
-      messageApi?.success(res.message);
-    } catch (err: unknown) {
-      messageApi?.error(String(err));
     }
   }
 
@@ -333,91 +257,6 @@ export default function Settings() {
               step={0.01}
               onChange={(v) => dispatch(setMappingLabelOpacity(v))}
               value={localConfig.mappingLabelOpacity}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("settings.freeLookEnabled")}
-            tooltip={t("settings.freeLookEnabledTip")}
-          >
-            <Switch
-              checked={localConfig.freeLookEnabled}
-              onChange={(v) => dispatch(setFreeLookEnabled(v))}
-            />
-          </SettingBox>
-          <SettingBox label={t("settings.freeLookSensitivity")}>
-            <Slider
-              className="w-sm"
-              min={0.1}
-              max={5}
-              step={0.1}
-              disabled={!localConfig.freeLookEnabled}
-              onChange={(v) => dispatch(setFreeLookSensitivity(v))}
-              value={localConfig.freeLookEffects?.scale_x ?? 1}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("mappings.common.invertX.label")}
-            tooltip={t("mappings.common.invertX.hint")}
-          >
-            <Switch
-              checked={!!localConfig.freeLookEffects?.invert_x}
-              disabled={!localConfig.freeLookEnabled}
-              onChange={(v) => dispatch(setFreeLookInvertX(v))}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("mappings.common.invertY.label")}
-            tooltip={t("mappings.common.invertY.hint")}
-          >
-            <Switch
-              checked={!!localConfig.freeLookEffects?.invert_y}
-              disabled={!localConfig.freeLookEnabled}
-              onChange={(v) => dispatch(setFreeLookInvertY(v))}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("settings.freeLookExitKey")}
-            tooltip={t("settings.freeLookExitKeyTip")}
-          >
-            <Select
-              className="w-sm"
-              mode="multiple"
-              value={localConfig.freeLookExitKeys ?? []}
-              options={freeLookExitKeyOptions}
-              onChange={(v) => changeFreeLookKeys("free_look_exit_keys", v)}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("settings.freeLookEnterKeys")}
-            tooltip={t("settings.freeLookEnterKeysTip")}
-          >
-            <Select
-              className="w-sm"
-              mode="multiple"
-              value={localConfig.freeLookEnterKeys ?? []}
-              options={freeLookExitKeyOptions}
-              onChange={(v) => changeFreeLookKeys("free_look_enter_keys", v)}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("settings.freeLookBlockedButtons")}
-            tooltip={t("settings.freeLookBlockedButtonsTip")}
-          >
-            <Select
-              className="w-sm"
-              mode="multiple"
-              value={localConfig.freeLookBlockedMouseButtons ?? []}
-              options={freeLookMouseButtonOptions}
-              onChange={changeFreeLookBlockedButtons}
-            />
-          </SettingBox>
-          <SettingBox
-            label={t("settings.virtualCursor")}
-            tooltip={t("settings.virtualCursorTip")}
-          >
-            <Switch
-              checked={localConfig.virtualCursorVisible ?? false}
-              onChange={changeVirtualCursorVisible}
             />
           </SettingBox>
           <SettingBox label={t("settings.horizontalMaskWidth")}>

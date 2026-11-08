@@ -20,12 +20,24 @@ import { useMessageContext } from "../../hooks";
  * 用例 13 要求"对应的映射圈呈现在左半屏中间，方便用户进入编辑"：
  * 这里放一个固定位置的圆形入口，点击打开简版设置（开关/灵敏度/翻转/退出键）。
  */
-export default function FreeLookEntry() {
+export default function FreeLookEntry({
+  open: externalOpen,
+  onClose,
+}: {
+  /** 由映射页右键菜单控制打开；不传时由入口圈自己管理 */
+  open?: boolean;
+  onClose?: () => void;
+} = {}) {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const messageApi = useMessageContext();
   const localConfig = useAppSelector((state) => state.localConfig);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = internalOpen || !!externalOpen;
+  const close = () => {
+    setInternalOpen(false);
+    onClose?.();
+  };
 
   // 退出键冲突时后端会拒绝保存（D10），所以成功后才回填 store。
   async function changeExitKeys(value: string[]) {
@@ -40,6 +52,53 @@ export default function FreeLookEntry() {
       messageApi?.error(String(err));
     }
   }
+
+  async function changeEnterKeys(value: string[]) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "free_look_enter_keys",
+        value,
+      });
+      dispatch(forceSetLocalConfig({ free_look_enter_keys: value }));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
+  async function changeBlockedButtons(value: string[]) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "free_look_blocked_mouse_buttons",
+        value,
+      });
+      dispatch(forceSetLocalConfig({ free_look_blocked_mouse_buttons: value }));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
+  async function changeVirtualCursor(value: boolean) {
+    try {
+      const res = await requestPost("/api/config/update_config", {
+        key: "virtual_cursor_visible",
+        value,
+      });
+      dispatch(forceSetLocalConfig({ virtual_cursor_visible: value }));
+      messageApi?.success(res.message);
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
+  const mouseButtonOptions = [
+    { value: "M-Left", label: t("mappings.mouseButton.left") },
+    { value: "M-Middle", label: t("mappings.mouseButton.middle") },
+    { value: "M-Right", label: t("mappings.mouseButton.right") },
+    { value: "M-Back", label: t("mappings.mouseButton.back") },
+    { value: "M-Forward", label: t("mappings.mouseButton.forward") },
+  ];
 
   const exitKeyOptions = [
     { value: "ControlLeft", label: t("settings.freeLookExitCtrlLeft") },
@@ -73,12 +132,12 @@ export default function FreeLookEntry() {
         title={t("settings.freeLookEnabled")}
         onClick={(e) => {
           e.stopPropagation();
-          setOpen(true);
+          setInternalOpen(true);
         }}
         onContextMenu={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          setOpen(true);
+          setInternalOpen(true);
         }}
       >
         <Typography.Text className="text-2.5 font-bold">
@@ -86,7 +145,7 @@ export default function FreeLookEntry() {
         </Typography.Text>
       </div>
 
-      <SettingModal open={open} onClose={() => setOpen(false)}>
+      <SettingModal open={open} onClose={close}>
         <div onClick={(e) => e.stopPropagation()}>
           <h1 className="title-with-line">{t("settings.freeLookEnabled")}</h1>
           <ItemBoxContainer className="max-h-70vh overflow-y-auto pr-2 scrollbar">
@@ -140,6 +199,39 @@ export default function FreeLookEntry() {
                 value={localConfig.freeLookExitKeys ?? []}
                 options={exitKeyOptions}
                 onChange={changeExitKeys}
+              />
+            </ItemBox>
+            <ItemBox
+              label={t("settings.freeLookEnterKeys")}
+              tooltip={t("settings.freeLookEnterKeysTip")}
+            >
+              <Select
+                className="w-full"
+                mode="multiple"
+                value={localConfig.freeLookEnterKeys ?? []}
+                options={exitKeyOptions}
+                onChange={changeEnterKeys}
+              />
+            </ItemBox>
+            <ItemBox
+              label={t("settings.freeLookBlockedButtons")}
+              tooltip={t("settings.freeLookBlockedButtonsTip")}
+            >
+              <Select
+                className="w-full"
+                mode="multiple"
+                value={localConfig.freeLookBlockedMouseButtons ?? []}
+                options={mouseButtonOptions}
+                onChange={changeBlockedButtons}
+              />
+            </ItemBox>
+            <ItemBox
+              label={t("settings.virtualCursor")}
+              tooltip={t("settings.virtualCursorTip")}
+            >
+              <Switch
+                checked={localConfig.virtualCursorVisible ?? false}
+                onChange={changeVirtualCursor}
               />
             </ItemBox>
           </ItemBoxContainer>
