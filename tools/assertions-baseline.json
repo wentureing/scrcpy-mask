@@ -6,7 +6,8 @@
     "devicesTsxLines": 789,
     "mappingsTsxLines": 1331,
     "settingsTsxLines": 807,
-    "sendTouchCallSites": 9
+    "sendTouchCallSites": 9,
+    "dependencyDirectionViolations": 0
   },
   "i18nMissing": {}
 }

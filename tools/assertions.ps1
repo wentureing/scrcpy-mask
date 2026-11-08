@@ -150,6 +150,38 @@ $sendTouchCalls = @(
         Select-String -Pattern 'ControlMsgHelper::send_touch\(' -AllMatches
 ).Count
 
+# ---------- 依赖方向（S1，docs/33）----------
+# 只检查 `crate::<domain>` 形式的引用；禁止反向依赖（web/mask 内部细节不被底层引用）。
+$dependencyViolations = 0
+$depRules = @(
+    @{ Path = 'src/scrcpy'; Forbidden = @('crate::mask', 'crate::web') },
+    @{ Path = 'src/config.rs'; Forbidden = @('crate::mask', 'crate::web', 'crate::scrcpy') },
+    @{ Path = 'src/access_rules.rs'; Forbidden = @('crate::mask', 'crate::web', 'crate::scrcpy') },
+    @{ Path = 'src/input_effects.rs'; Forbidden = @('crate::mask', 'crate::web', 'crate::scrcpy') },
+    @{ Path = 'src/mask'; Forbidden = @('crate::web') },
+    @{ Path = 'src/utils'; Forbidden = @('crate::mask', 'crate::web') }
+)
+foreach ($rule in $depRules) {
+    $target = Join-Path $Root $rule.Path
+    if (-not (Test-Path $target)) { continue }
+    $files = if ((Get-Item $target).PSIsContainer) {
+        Get-ChildItem $target -Recurse -Include *.rs -File
+    } else {
+        @(Get-Item $target)
+    }
+    foreach ($file in $files) {
+        $text = Get-Content $file.FullName -Raw -Encoding utf8
+        foreach ($forbidden in $rule.Forbidden) {
+            $pattern = [regex]::Escape($forbidden) + '[^A-Za-z0-9_]'
+            $count = ([regex]::Matches($text, $pattern)).Count
+            if ($count -gt 0) {
+                $dependencyViolations += $count
+                Write-Host ("  依赖违规：{0} 引用 {1}（{2} 处）" -f $file.FullName.Replace($Root, ''), $forbidden, $count) -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
 $structure = [ordered]@{
     mappingButtonDragFactoryCalls = [int]$dragCalls
     buttonTsxTotalLines           = [int]$buttonLines
@@ -158,6 +190,7 @@ $structure = [ordered]@{
     mappingsTsxLines              = [int](Get-LineCount 'frontend/src/components/mappings/Mappings.tsx')
     settingsTsxLines              = [int](Get-LineCount 'frontend/src/components/Settings.tsx')
     sendTouchCallSites            = [int]$sendTouchCalls
+    dependencyDirectionViolations = [int]$dependencyViolations
 }
 
 # ---------- 基线 ----------
@@ -199,7 +232,7 @@ foreach ($key in $structure.Keys) {
     }
     if ($current -gt $base) {
         # 只有"重复度"指标是硬门槛；文件行数会因正常功能新增而增长，只提示不阻塞
-        $hardMetrics = @('mappingButtonDragFactoryCalls', 'buttonTsxTotalLines', 'buttonTsxFiles')
+        $hardMetrics = @('mappingButtonDragFactoryCalls', 'buttonTsxTotalLines', 'buttonTsxFiles', 'dependencyDirectionViolations')
         if ($hardMetrics -contains $key) {
             $failures.Add("结构指标回归：$key = $current > 基线 $base")
             Write-Host ("  {0,-30} 当前 {1,6}  基线 {2,6}  ← 回归" -f $key, $current, $base) -ForegroundColor Red
