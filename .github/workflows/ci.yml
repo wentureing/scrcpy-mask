@@ -1,6 +1,7 @@
 name: CI
 
 # 推送到分支即触发（远程提交就执行 CI）；也可在 Actions 页面手动 Run。
+# 约定：没有任务就不建 run——推送无任务提交时提交首行带 [skip ci]（GitHub 原生，不创建 run）。
 on:
   push:
     branches:
