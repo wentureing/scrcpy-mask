@@ -252,33 +252,10 @@ foreach ($key in $structure.Keys) {
 }
 
 # ---------- 比较：i18n 缺失集合 ----------
+# ---------- i18n（已暂停：只维护中文，不跑 i18n 检查）----------
 
-Write-Section 'i18n 缺失（ratchet）'
-
-$baselineMissing = $baseline.i18nMissing
-foreach ($fileKey in $i18nCurrent.Keys) {
-    $currentMissing = @($i18nCurrent[$fileKey] | Where-Object { $_ })
-    $baseList = @()
-    if ($baselineMissing -and $baselineMissing.PSObject.Properties.Name -contains $fileKey) {
-        $baseList = @($baselineMissing.$fileKey | Where-Object { $_ })
-    }
-
-    $newMissing = @($currentMissing | Where-Object { $baseList -notcontains $_ })
-    $fixed = @($baseList | Where-Object { $currentMissing -notcontains $_ })
-
-    if ($newMissing.Count -gt 0) {
-        $sample = ($newMissing | Select-Object -First 5) -join ', '
-        $notices.Add("i18n 新增缺键：$fileKey 缺 $($newMissing.Count) 个基线之外的键（多语言暂停维护，不阻塞）: $sample")
-        Write-Host ("  {0,-45} 新增缺 {1} 键 ← 提示" -f $fileKey, $newMissing.Count) -ForegroundColor Yellow
-    }
-    elseif ($fixed.Count -gt 0) {
-        $notices.Add("$fileKey 补齐了 $($fixed.Count) 个键，可以执行 -UpdateBaseline 收紧")
-        Write-Host ("  {0,-45} 补齐 {1} 键 ← 可收紧" -f $fileKey, $fixed.Count) -ForegroundColor Green
-    }
-    else {
-        Write-Host ("  {0,-45} 缺 {1} 键（与基线一致）" -f $fileKey, $currentMissing.Count)
-    }
-}
+Write-Section 'i18n 检查（已暂停）'
+Write-Host "  已暂停（用户要求，只维护 zh-CN）"
 
 # ---------- 汇总 ----------
 
