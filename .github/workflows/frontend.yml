@@ -51,6 +51,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist-${{ github.sha }}
-          path: frontend/dist
+          # vite.config.ts 的 build.outDir 是 ../assets/web（相对 frontend）
+          path: assets/web
           if-no-files-found: error
           retention-days: 14
