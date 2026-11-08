@@ -904,6 +904,12 @@ export default function Mappings() {
   const localConfig = useAppSelector((state) => state.localConfig);
 
   const [displayedMappingFile, setDisplayedMappingFile] = useState("");
+  // 访问规则草稿基线：规则编辑只改本地 store，保存时与基线比较决定按钮是否可用
+  const savedAccessRulesRef = useRef<string>(
+    JSON.stringify(localConfig.accessRules ?? []),
+  );
+  const accessRulesDirty =
+    JSON.stringify(localConfig.accessRules ?? []) !== savedAccessRulesRef.current;
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isAccessControlOpen, setIsAccessControlOpen] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
@@ -1006,7 +1012,25 @@ export default function Mappings() {
   }
 
   async function updateMappingFile() {
-    if (editState) {
+    // 只改了访问规则（映射未编辑）时，也允许用“保存”落盘
+    if (!editState) {
+      if (accessRulesDirty) {
+        try {
+          await requestPost("/api/config/update_config", {
+            key: "access_rules",
+            value: localConfig.accessRules ?? [],
+          });
+          savedAccessRulesRef.current = JSON.stringify(
+            localConfig.accessRules ?? [],
+          );
+          messageApi?.success(t("mappings.home.save"));
+        } catch (error) {
+          messageApi?.error(String(error));
+        }
+      }
+      return;
+    }
+    {
       const errorMag = t("mappings.home.emptyBind");
       const curConfig = editState.current;
       const validateDirectionBind = (bind: DirectionBinding) => {
@@ -1074,6 +1098,9 @@ export default function Mappings() {
               key: "access_rules",
               value: localConfig.accessRules ?? [],
             });
+            savedAccessRulesRef.current = JSON.stringify(
+              localConfig.accessRules ?? [],
+            );
           } catch (accessRuleError) {
             messageApi?.error(String(accessRuleError));
           }
@@ -1268,7 +1295,7 @@ export default function Mappings() {
             />
             <Button
               type="primary"
-              disabled={editState === null || editState.edited === false}
+              disabled={(editState === null || editState.edited === false) && !accessRulesDirty}
               icon={<SaveOutlined />}
               onClick={updateMappingFile}
             >
