@@ -1,0 +1,56 @@
+# 前端独立 CI：只编译/检查前端，不碰 Rust 编译与 rust-cache。
+#
+# 触发：改 frontend/** 或本文件时；也可手动 workflow_dispatch。
+# 产物：frontend/dist（frontend-dist-<sha>），可下载后替换人类测试目录的 assets/web。
+
+name: Frontend
+
+on:
+  push:
+    branches:
+      - master
+      - 'custom/**'
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout codes
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Lint frontend
+        shell: pwsh
+        run: pnpm --dir frontend lint
+
+      - name: Build frontend (tsc -b + vite build)
+        shell: pwsh
+        run: pnpm --dir frontend build
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          path: frontend/dist
+          if-no-files-found: error
+          retention-days: 14
