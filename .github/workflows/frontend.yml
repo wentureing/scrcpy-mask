@@ -5,14 +5,9 @@
 
 name: Frontend
 
+# 只在手动触发时构建前端，避免与 CI（check/test）在同一提交上重复运行。
+# 需要前端产物时：Actions → Frontend → Run workflow。
 on:
-  push:
-    branches:
-      - master
-      - 'custom/**'
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend.yml'
   workflow_dispatch:
 
 jobs:
