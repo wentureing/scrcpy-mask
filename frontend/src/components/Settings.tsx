@@ -104,6 +104,56 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
+  // 画质预设：一次写入视频/音频参数（先全部请求成功再回填，避免半套配置）
+  async function applyVideoPreset(
+    preset: "lowLatency" | "compat" | "highQuality",
+  ) {
+    const presets = {
+      lowLatency: {
+        video_codec: "H264",
+        video_bit_rate: 4_000_000,
+        video_max_size: 1280,
+        video_max_fps: 60,
+        audio_codec: "OPUS",
+        audio_bit_rate: 96_000,
+      },
+      compat: {
+        video_codec: "H264",
+        video_bit_rate: 8_000_000,
+        video_max_size: 0,
+        video_max_fps: 0,
+        audio_codec: "OPUS",
+        audio_bit_rate: 128_000,
+      },
+      highQuality: {
+        video_codec: "H265",
+        video_bit_rate: 12_000_000,
+        video_max_size: 0,
+        video_max_fps: 0,
+        audio_codec: "OPUS",
+        audio_bit_rate: 160_000,
+      },
+    } as const;
+    const patch = presets[preset];
+    const storePatch = {
+      videoCodec: patch.video_codec,
+      videoBitRate: patch.video_bit_rate,
+      videoMaxSize: patch.video_max_size,
+      videoMaxFps: patch.video_max_fps,
+      audioCodec: patch.audio_codec,
+      audioBitRate: patch.audio_bit_rate,
+    };
+    try {
+      for (const [key, value] of Object.entries(patch)) {
+        await requestPost("/api/config/update_config", { key, value });
+      }
+      dispatch(forceSetLocalConfig(storePatch));
+      messageApi?.success(t("settings.presetApplied"));
+    } catch (err: unknown) {
+      messageApi?.error(String(err));
+    }
+  }
+
   // 端口被占用时后端会静默顺延到下一个端口，这里把那条提示显示出来（读后即清空）。
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +393,24 @@ export default function Settings() {
           </SettingBox>
         </ItemBoxContainer>
         <h3 className="title-with-line-sub">{t("settings.title.video")}</h3>
+        <ItemBoxContainer className="mb-4">
+          <SettingBox
+            label={t("settings.videoPreset")}
+            tooltip={t("settings.videoPresetTip")}
+          >
+            <Space.Compact>
+              <Button size="small" onClick={() => applyVideoPreset("lowLatency")}>
+                {t("settings.presetLowLatency")}
+              </Button>
+              <Button size="small" onClick={() => applyVideoPreset("compat")}>
+                {t("settings.presetCompat")}
+              </Button>
+              <Button size="small" onClick={() => applyVideoPreset("highQuality")}>
+                {t("settings.presetHighQuality")}
+              </Button>
+            </Space.Compact>
+          </SettingBox>
+        </ItemBoxContainer>
         <ItemBoxContainer className="mb-6">
           <SettingBox label={t("settings.videoCodec")}>
             <Select
