@@ -124,47 +124,16 @@ fn main() {
     // 注意：任务管理器强杀进程时不会执行到这里，这是已知限制。
     let config = LocalConfig::get();
     cleanup_adb_reverse();
-    cleanup_adb_server(config.adb_cleanup_policy, &config.adb_path);
+    scrcpy_mask::scrcpy::adb_owner::cleanup_adb_server(
+        config.adb_cleanup_policy,
+        &config.adb_path,
+    );
 }
 
 /// 启动时记录 adb 归属（只记日志，不阻塞启动流程）。
 fn log_adb_owner() {
     let owner = scrcpy_mask::scrcpy::adb_owner::detect(5037);
     log::info!("[Startup] adb owner: {}", owner.describe());
-}
-
-/// 按策略清理 adb server（`docs/22` §22.19 D26/D27）。
-///
-/// - `Auto`：只有检测到监听 5037 的是**本程序自带的 adb** 时才 `kill-server`；
-/// - `Always`：一律 `kill-server`；
-/// - `Never`：不动。
-///
-/// 非 Windows 平台归属判定为 `Unsupported`，`Auto` 下不会误杀。
-fn cleanup_adb_server(policy: scrcpy_mask::config::AdbCleanupPolicy, adb_path: &str) {
-    use scrcpy_mask::scrcpy::adb_owner::{self, AdbOwner};
-
-    const ADB_SERVER_PORT: u16 = 5037;
-    let owner = adb_owner::detect(ADB_SERVER_PORT);
-    log::info!("[Teardown] adb owner: {}", owner.describe());
-
-    if !adb_owner::should_kill(policy, &owner) {
-        if matches!(owner, AdbOwner::External { .. }) {
-            log::info!("[Teardown] 外部 adb 未清理（策略 Auto，可用设置改为 always）");
-        }
-        return;
-    }
-
-    match std::process::Command::new(adb_path)
-        .arg("kill-server")
-        .output()
-    {
-        Ok(out) if out.status.success() => log::info!("[Teardown] adb server stopped"),
-        Ok(out) => log::warn!(
-            "[Teardown] adb kill-server failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ),
-        Err(e) => log::warn!("[Teardown] cannot run adb ({}): {e}", adb_path),
-    }
 }
 
 /// 遍历当前受控设备，逐条移除 `adb reverse` 规则。

@@ -174,6 +174,40 @@ pub fn should_kill(policy: crate::config::AdbCleanupPolicy, owner: &AdbOwner) ->
     }
 }
 
+/// 按策略清理 adb server（`docs/22` D26/D27）。
+///
+/// 由“后端退出”和“Web 空闲（WS 断开 2 秒无重连）”共用。
+pub fn cleanup_adb_server(policy: crate::config::AdbCleanupPolicy, adb_path: &str) {
+    const ADB_SERVER_PORT: u16 = 5037;
+    let owner = detect(ADB_SERVER_PORT);
+    log::info!("[Teardown] adb owner: {}", owner.describe());
+
+    if !should_kill(policy, &owner) {
+        if matches!(owner, AdbOwner::External { .. }) {
+            log::info!("[Teardown] 外部 adb 未清理（策略 Auto，可用设置改为 always）");
+        }
+        return;
+    }
+
+    match std::process::Command::new(adb_path)
+        .arg("kill-server")
+        .output()
+    {
+        Ok(out) if out.status.success() => log::info!("[Teardown] adb server stopped"),
+        Ok(out) => log::warn!(
+            "[Teardown] adb kill-server failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(e) => log::warn!("[Teardown] cannot run adb ({}): {e}", adb_path),
+    }
+}
+
+/// Web 端空闲时清理：WS 断开且 2 秒内没有重连。
+pub fn cleanup_adb_on_web_idle() {
+    let config = crate::config::LocalConfig::get();
+    cleanup_adb_server(config.adb_cleanup_policy, &config.adb_path);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,6 +9,8 @@ use axum::{
 };
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::{
@@ -151,6 +153,8 @@ impl From<WebSocketMsg> for ScrcpyControlMsg {
 pub struct AppStateWS {
     cs_tx: broadcast::Sender<ScrcpyControlMsg>,
     ws_tx: broadcast::Sender<WebSocketNotification>,
+    /// 当前活跃 WS 连接数；归零 2 秒后清理 adb（刷新会重连，不会误清理）
+    active: Arc<AtomicUsize>,
 }
 
 pub fn routers(
@@ -159,18 +163,31 @@ pub fn routers(
 ) -> Router {
     Router::new()
         .route("/connect", any(ws_handler))
-        .with_state(AppStateWS { cs_tx, ws_tx })
+        .with_state(AppStateWS {
+            cs_tx,
+            ws_tx,
+            active: Arc::new(AtomicUsize::new(0)),
+        })
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppStateWS>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state.cs_tx, state.ws_tx.subscribe()))
+    ws.on_upgrade(move |socket| {
+        handle_socket(
+            socket,
+            state.cs_tx,
+            state.ws_tx.subscribe(),
+            state.active.clone(),
+        )
+    })
 }
 
 async fn handle_socket(
     socket: WebSocket,
     cs_tx: broadcast::Sender<ScrcpyControlMsg>,
     ws_rx: broadcast::Receiver<WebSocketNotification>,
+    active: Arc<AtomicUsize>,
 ) {
+    active.fetch_add(1, Ordering::Relaxed);
     log::info!("[WebSocket] {}", t!("web.ws.connected"));
     let (sender, receiver) = socket.split();
 
@@ -191,6 +208,17 @@ async fn handle_socket(
         }
     }
     log::info!("[WebSocket] {}", t!("web.ws.disconnected"));
+    // 断开后 2 秒仍无重连（刷新会在 2 秒内重连）→ 清理 adb server
+    if active.fetch_sub(1, Ordering::Relaxed) == 1 {
+        let active = active.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if active.load(Ordering::Relaxed) == 0 {
+                log::info!("[WebSocket] 空闲 2 秒，清理 adb server");
+                crate::scrcpy::adb_owner::cleanup_adb_on_web_idle();
+            }
+        });
+    }
 }
 
 async fn handle_send(
