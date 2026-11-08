@@ -901,6 +901,7 @@ export default function Mappings() {
   const refreshBackground = useRefreshBackgroundImage();
   const dispatch = useAppDispatch();
   const { t } = useTranslation();
+  const localConfig = useAppSelector((state) => state.localConfig);
 
   const [displayedMappingFile, setDisplayedMappingFile] = useState("");
   const [isManagerOpen, setIsManagerOpen] = useState(false);
@@ -1067,6 +1068,15 @@ export default function Mappings() {
             current: curConfig,
             old: deepClone(curConfig),
           });
+          // 访问规则：编辑时只改本地草稿，这里随映射“保存”一起落盘。
+          try {
+            await requestPost("/api/config/update_config", {
+              key: "access_rules",
+              value: localConfig.accessRules ?? [],
+            });
+          } catch (accessRuleError) {
+            messageApi?.error(String(accessRuleError));
+          }
         }
       } catch (error) {
         if (isValidationError(error)) {

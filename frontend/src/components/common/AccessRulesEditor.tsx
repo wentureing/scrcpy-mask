@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { useAppDispatch, useAppSelector } from "../../store/store";
 import { forceSetLocalConfig } from "../../store/localConfig";
 import { requestGet, requestPost } from "../../utils";
-import { useMessageContext } from "../../hooks";
 import { formatMappingLabel } from "../mappings/tools";
 
 type AccessTarget = {
@@ -46,7 +45,6 @@ export default function AccessRulesEditor({
 }: AccessRulesEditorProps) {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
-  const messageApi = useMessageContext();
   const localConfig = useAppSelector((state) => state.localConfig);
 
   const [mappingOptions, setMappingOptions] = useState<MappingOption[]>([]);
@@ -176,16 +174,8 @@ export default function AccessRulesEditor({
     : allRules;
 
   async function saveAccessRules(next: AccessRule[]) {
-    try {
-      const res = await requestPost("/api/config/update_config", {
-        key: "access_rules",
-        value: next,
-      });
-      dispatch(forceSetLocalConfig({ access_rules: next }));
-      messageApi?.success(res.message);
-    } catch (err: unknown) {
-      messageApi?.error(String(err));
-    }
+    // 只改本地草稿；落盘由映射页“保存”按钮统一提交（docs/34）
+    dispatch(forceSetLocalConfig({ access_rules: next }));
   }
 
   function patchRule(rule: AccessRule, patch: Partial<AccessRule>) {
