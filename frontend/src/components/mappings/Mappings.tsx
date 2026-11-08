@@ -1247,7 +1247,8 @@ export default function Mappings() {
       />
       <Modal
         title={t("mappings.home.accessControl")}
-        width={860}
+        width="90vw"
+        styles={{ content: { maxWidth: 1400 } }}
         open={isAccessControlOpen}
         onCancel={() => setIsAccessControlOpen(false)}
         footer={null}

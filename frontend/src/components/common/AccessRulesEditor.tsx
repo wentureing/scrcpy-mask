@@ -207,9 +207,9 @@ export default function AccessRulesEditor({
 
   const header = (
     <Flex gap="small" className="w-full text-xs text-text-secondary">
-      <div style={{ width: "20%" }}>{t("settings.accessColumnMapping")}</div>
+      <div style={{ width: "25%" }}>{t("settings.accessColumnMapping")}</div>
       <div style={{ width: "30%" }}>{t("settings.accessColumnCondition")}</div>
-      <div style={{ width: "50%" }}>{t("settings.accessColumnOperation")}</div>
+      <div style={{ width: "45%" }}>{t("settings.accessColumnOperation")}</div>
     </Flex>
   );
 
@@ -225,8 +225,8 @@ export default function AccessRulesEditor({
         const needsTarget =
           rule.operation.kind === "open" || rule.operation.kind === "close";
         return (
-          <Flex key={`${rule.mapping_id}-${rule.action ?? ""}-${rule.condition}`} gap="small" align="center" wrap>
-            <Flex gap="small" align="center" style={{ width: "20%" }}>
+          <Flex key={`${rule.mapping_id}-${rule.action ?? ""}-${rule.condition}`} gap="small" align="center">
+            <Flex gap="small" align="center" style={{ width: "25%" }}>
               <Switch
                 size="small"
                 checked={rule.enabled}
@@ -242,7 +242,7 @@ export default function AccessRulesEditor({
               />
               <Select
                 size="small"
-                className="w-24"
+                style={{ width: 100 }}
                 value={rule.action ?? ""}
                 options={accessActionOptions(mappingType(rule.mapping_id))}
                 onChange={(value) => patchRule(rule, { action: value || null })}
@@ -251,7 +251,7 @@ export default function AccessRulesEditor({
             <Flex gap="small" align="center" style={{ width: "30%" }}>
               <Select
                 size="small"
-                className="w-20"
+                style={{ width: 90 }}
                 value={rule.predicate}
                 options={predicateOptions}
                 onChange={(value) =>
@@ -266,10 +266,10 @@ export default function AccessRulesEditor({
                 onChange={(value) => patchRule(rule, { condition: value })}
               />
             </Flex>
-            <Flex gap="small" align="center" style={{ width: "50%" }}>
+            <Flex gap="small" align="center" style={{ width: "45%" }}>
               <Select
                 size="small"
-                className="w-24"
+                style={{ width: 110 }}
                 value={rule.operation.kind}
                 options={operationOptions}
                 onChange={(value) =>
@@ -285,7 +285,7 @@ export default function AccessRulesEditor({
                 <>
                   <Select
                     size="small"
-                    className="w-20"
+                    style={{ width: 100 }}
                     value={rule.operation.target?.kind ?? "mode"}
                     options={[
                       { value: "mode", label: t("settings.accessTargetMode") },
