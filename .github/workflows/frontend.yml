@@ -1,12 +1,20 @@
 # 前端独立 CI：只编译/检查前端，不碰 Rust 编译与 rust-cache。
 #
-# 触发：**仅手动 workflow_dispatch**（避免每次 push 都创建一个“空 run”）。
-# 用法：推送 `[frontend]` 提交后，在 Actions → Frontend → Run workflow 手动触发。
+# 触发：前端文件（frontend/**）变更自动构建；也可在 Actions 手动 workflow_dispatch。
+# 不匹配 paths 的提交不会创建 run（避免空任务 CI）。
 # 产物：assets/web（frontend-dist-<sha>），可下载后替换人类测试目录的 assets/web。
 
 name: Frontend
 
 on:
+  push:
+    branches:
+      - master
+      - 'custom/**'
+    # 只有前端文件变更才触发（不匹配的提交不会创建空 run）
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
   workflow_dispatch:
 
 jobs:
