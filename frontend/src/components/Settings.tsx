@@ -104,6 +104,46 @@ export default function Settings() {
   const updateInfo = useAppSelector((state) => state.other.updateInfo);
   const [touchSaving, setTouchSaving] = useState(false);
 
+  // 画质预设的“已生效”判断：与 store 当前值完全一致才高亮
+  const presetStoreValues = {
+    lowLatency: {
+      videoCodec: "H264",
+      videoBitRate: 4_000_000,
+      videoMaxSize: 1280,
+      videoMaxFps: 60,
+      audioCodec: "OPUS",
+      audioBitRate: 96_000,
+    },
+    compat: {
+      videoCodec: "H264",
+      videoBitRate: 8_000_000,
+      videoMaxSize: 0,
+      videoMaxFps: 0,
+      audioCodec: "OPUS",
+      audioBitRate: 128_000,
+    },
+    highQuality: {
+      videoCodec: "H265",
+      videoBitRate: 12_000_000,
+      videoMaxSize: 0,
+      videoMaxFps: 0,
+      audioCodec: "OPUS",
+      audioBitRate: 160_000,
+    },
+  } as const;
+
+  const isPresetActive = (key: keyof typeof presetStoreValues) => {
+    const preset = presetStoreValues[key];
+    return (
+      localConfig.videoCodec === preset.videoCodec &&
+      localConfig.videoBitRate === preset.videoBitRate &&
+      localConfig.videoMaxSize === preset.videoMaxSize &&
+      localConfig.videoMaxFps === preset.videoMaxFps &&
+      localConfig.audioCodec === preset.audioCodec &&
+      localConfig.audioBitRate === preset.audioBitRate
+    );
+  };
+
   // 画质预设：一次写入视频/音频参数（先全部请求成功再回填，避免半套配置）
   async function applyVideoPreset(
     preset: "lowLatency" | "compat" | "highQuality",
@@ -399,13 +439,25 @@ export default function Settings() {
             tooltip={t("settings.videoPresetTip")}
           >
             <Space.Compact>
-              <Button size="small" onClick={() => applyVideoPreset("lowLatency")}>
+              <Button
+                size="small"
+                type={isPresetActive("lowLatency") ? "primary" : "default"}
+                onClick={() => applyVideoPreset("lowLatency")}
+              >
                 {t("settings.presetLowLatency")}
               </Button>
-              <Button size="small" onClick={() => applyVideoPreset("compat")}>
+              <Button
+                size="small"
+                type={isPresetActive("compat") ? "primary" : "default"}
+                onClick={() => applyVideoPreset("compat")}
+              >
                 {t("settings.presetCompat")}
               </Button>
-              <Button size="small" onClick={() => applyVideoPreset("highQuality")}>
+              <Button
+                size="small"
+                type={isPresetActive("highQuality") ? "primary" : "default"}
+                onClick={() => applyVideoPreset("highQuality")}
+              >
                 {t("settings.presetHighQuality")}
               </Button>
             </Space.Compact>
@@ -425,7 +477,7 @@ export default function Settings() {
               className="w-sm"
               controls={false}
               min={1000000}
-              suffix="bps"
+              addonAfter={<span className="text-sm">bps</span>}
               value={localConfig.videoBitRate}
               onChange={(v) => v !== null && dispatch(setVideoBitRate(v))}
             />
@@ -545,7 +597,7 @@ export default function Settings() {
               controls={false}
               disabled={localConfig.audioCodec === "RAW"}
               min={audioBitRateMin}
-              suffix="bps"
+              addonAfter={<span className="text-sm">bps</span>}
               value={localConfig.audioBitRate}
               onChange={(v) => v !== null && dispatch(setAudioBitRate(v))}
             />
