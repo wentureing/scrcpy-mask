@@ -476,10 +476,12 @@ export default function Settings() {
             <InputNumber
               className="w-sm"
               controls={false}
-              min={1000000}
-              addonAfter={<span className="text-sm">bps</span>}
-              value={localConfig.videoBitRate}
-              onChange={(v) => v !== null && dispatch(setVideoBitRate(v))}
+              min={1}
+              addonAfter="Mbps"
+              value={localConfig.videoBitRate / 1_000_000}
+              onChange={(v) =>
+                v !== null && dispatch(setVideoBitRate(Math.round(v * 1_000_000)))
+              }
             />
           </SettingBox>
           <SettingBox
@@ -596,10 +598,12 @@ export default function Settings() {
               className="w-sm"
               controls={false}
               disabled={localConfig.audioCodec === "RAW"}
-              min={audioBitRateMin}
-              addonAfter={<span className="text-sm">bps</span>}
-              value={localConfig.audioBitRate}
-              onChange={(v) => v !== null && dispatch(setAudioBitRate(v))}
+              min={Math.ceil(audioBitRateMin / 1000)}
+              addonAfter="kbps"
+              value={localConfig.audioBitRate / 1000}
+              onChange={(v) =>
+                v !== null && dispatch(setAudioBitRate(Math.round(v * 1000)))
+              }
             />
           </SettingBox>
           <SettingBox label={t("settings.audioSource")}>
